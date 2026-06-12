@@ -2,6 +2,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include "fairino_hardware/version_control.h"
+#include <chrono>
+#include <thread>
 
 std::atomic<int> mainerrcode;
 std::atomic<int> suberrcode;
@@ -959,9 +961,24 @@ std::string robot_command_thread::MoveGripper(std::string para){
     int pos = std::stoi(list.front());list.pop_front();
     int veli = std::stoi(list.front());list.pop_front();
     int forcei = std::stoi(list.front());list.pop_front();
-    int max_timei = 30000;
-    uint8_t blocki = 1;
-    return std::to_string(_ptr_robot->MoveGripper(index,pos,veli,forcei,max_timei,blocki,0,0,0,0));
+    int max_timei = std::stoi(list.front());list.pop_front();
+    uint8_t blocki = std::stoi(list.front());
+    // RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"MoveGripper parameters: index=%d, pos=%d, vel=%d, force=%d, max_time=%d, block=%d", index, pos, veli, forcei, max_timei, blocki);
+    int ret = _ptr_robot->MoveGripper(index,pos,veli,forcei,max_timei,blocki,0,0,0,0);
+    if (ret == 0 && blocki == 0) {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(max_timei);
+        uint16_t fault = 0;
+        uint8_t status = 0;
+        while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+            _ptr_robot->GetGripperMotionDone(&fault, &status);
+            if (status != 0 || fault != 0) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        if (fault != 0) {
+            RCLCPP_WARN(rclcpp::get_logger(LOGGER_NAME), "MoveGripper: gripper fault=%d", fault);
+        }
+    }
+    return std::to_string(ret);
 }
     
 /**

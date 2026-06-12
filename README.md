@@ -32,4 +32,4 @@ git checkout mrobo2
   git checkout tags/V3.0.0_RobotV3.8.0
   ```
 
-  > **Note:** You do not need to perform these steps — they are shown here for reference only.
+  > **Note:** You do not need to clone `FAIR-INNOVATION/frcobot_ros2.git` — this is shown here for reference only.

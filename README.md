@@ -24,7 +24,7 @@ cd frcobot_ros2
 git checkout mrobo2
 ```
 
-  The `mrobo2` branch is derived from the `tags/V3.0.0_RobotV3.8.0` tag of the [upstream FAIR-INNOVATION repository](https://github.com/FAIR-INNOVATION/frcobot_ros2.git) as shown below:
+  The `mrobo2` branch is derived from the `tags/V3.0.0_RobotV3.8.0` tag of the [FAIR-INNOVATION repository](https://github.com/FAIR-INNOVATION/frcobot_ros2.git) as shown below:
 
   ```bash
   git clone https://github.com/FAIR-INNOVATION/frcobot_ros2.git

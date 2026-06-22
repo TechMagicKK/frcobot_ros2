@@ -4,7 +4,9 @@ This is the ROS 2 API project for the Fairino robot (software version must be gr
 
 ## Why this fork
 
-The upstream `MoveGripper` implementation hardcoded `max_time = 30000` ms and `block = 1`, making it impossible to tune gripper timeout or run in non-blocking mode from the caller side.
+The upstream implementation hardcoded several motion parameters, making runtime tuning impossible without recompilation.
+
+**Gripper control** — `MoveGripper` hardcoded `max_time = 30000` ms and `block = 1`, making it impossible to tune gripper timeout or run in non-blocking mode from the caller side.
 
 This fork refactors `MoveGripper` in [fairino_hardware/src/command_server.cpp](https://github.com/FAIR-INNOVATION/frcobot_ros2/blob/7c683cf63f2c94587a5197c67fd0a80dc886b7ad/fairino_hardware/src/command_server.cpp#L946-L965) to:
 
@@ -13,6 +15,12 @@ This fork refactors `MoveGripper` in [fairino_hardware/src/command_server.cpp](h
 - Surface gripper faults via `RCLCPP_WARN` (ROS 2 logger) if `fault != 0` is detected during the poll.
 
 This is required for applications that need fine-grained control over gripper behavior — for example, coordinating gripper motion with arm trajectories where a fixed 30-second blocking wait is unacceptable.
+
+**Motion blending** — The upstream `MoveL` command always used a fixed blend radius read from the Fairino parameter server (`MoveL_blendR`), requiring a separate `SetParameters` service call before each motion to change it.
+
+This fork extends `MoveL` in `fairino_hardware/src/command_server.cpp` to accept an optional inline blend radius as a 5th argument. When provided, it overrides the parameter server value for that call only; when omitted, the parameter server value is used as before (fully backward compatible).
+
+The `MoveTool` action interface (`techmagic_arm_commander_interfaces/action/MoveTool.action`) is extended with a `blend_radius` field (metres), which the `techmagic_fairino_commander` passes inline to `MoveL`. This lets callers vary blend radius per motion goal — useful for distinguishing transit moves (large radius, smooth arc) from precision approach moves (zero or small radius, sharp stop) without touching the parameter server.
 
 ## Installation
 

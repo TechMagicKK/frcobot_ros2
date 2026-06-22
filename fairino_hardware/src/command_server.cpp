@@ -1383,6 +1383,11 @@ std::string robot_command_thread::MoveL(std::string para){
         iter_data++;
 
         user = std::stoi(iter_data->str());
+        iter_data++;
+
+        if(iter_data != end){
+            blendR = std::stof(iter_data->str());
+        }
     }
 
     ExaxisPos extpos{eaxis1,eaxis2,eaxis3,eaxis4};

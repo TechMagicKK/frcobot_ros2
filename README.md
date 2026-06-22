@@ -22,6 +22,41 @@ This fork extends `MoveL` in `fairino_hardware/src/command_server.cpp` to accept
 
 The `MoveTool` action interface (`techmagic_arm_commander_interfaces/action/MoveTool.action`) is extended with a `blend_radius` field (metres), which the `techmagic_fairino_commander` passes inline to `MoveL`. This lets callers vary blend radius per motion goal — useful for distinguishing transit moves (large radius, smooth arc) from precision approach moves (zero or small radius, sharp stop) without touching the parameter server.
 
+## Known limitations
+
+### Gripper cannot move in parallel with arm motion
+
+Issuing `MoveGripper` while `MoveL` is still executing does not run both in parallel. To reproduce, run the following commands in three separate terminals:
+
+```bash
+# Terminal 1 — slow the robot down so the effect is clearly visible
+ros2 service call /fairino_remote_command_service \
+  fairino_msgs/srv/RemoteCmdInterface \
+  "cmd_str: SetSpeed(5)"
+
+# Terminal 1 — define a target point far enough to give a long travel time
+ros2 service call /fairino_remote_command_service \
+  fairino_msgs/srv/RemoteCmdInterface \
+  "cmd_str: CARTPoint(1,200,-450,350,180,0,-135)"
+```
+
+```bash
+# Terminal 2 — start the arm motion (returns immediately at the SDK level)
+ros2 service call /fairino_remote_command_service \
+  fairino_msgs/srv/RemoteCmdInterface \
+  "cmd_str: MoveL(CART1,5,0,0)"
+```
+
+```bash
+# Terminal 3 — immediately send the gripper command while the arm is still moving;
+#              observe that it does not start until the arm stops
+ros2 service call /fairino_remote_command_service \
+  fairino_msgs/srv/RemoteCmdInterface \
+  "cmd_str: MoveGripper(1,10)"
+```
+
+  > **Note:** This limitation exists in the original [FAIR-INNOVATION/frcobot_ros2](https://github.com/FAIR-INNOVATION/frcobot_ros2) as well.
+
 ## Installation
 
 Clone this repository and check out the `mrobo2` branch:

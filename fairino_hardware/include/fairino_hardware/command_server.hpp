@@ -7,6 +7,7 @@
 #include "fairino_msgs/srv/remote_script_content.hpp"
 #include "fairino_msgs/srv/remote_cmd_interface.hpp"
 #include "fairino_msgs/msg/robot_nonrt_state.hpp"
+#include "fairino_msgs/msg/robot_motion_status.hpp"
 #include "mutex"
 #include "sys/socket.h"
 #include "sys/types.h"
@@ -23,6 +24,7 @@
 using remote_cmd_server_srv_msg = fairino_msgs::srv::RemoteCmdInterface;
 using remote_script_srv_msg = fairino_msgs::srv::RemoteScriptContent;
 using robot_feedback_msg = fairino_msgs::msg::RobotNonrtState;
+using robot_motion_status_msg = fairino_msgs::msg::RobotMotionStatus;
 #define REMOTE_CMD_SERVER_NAME  "fairino_remote_command_service"
 #define REMOTE_SCRIPT_SERVER_NAME  "fairino_script_service"
 
@@ -168,6 +170,8 @@ private:
     std::unique_ptr<FRRobot> _ptr_robot;//机械臂SDK库指针
     ROBOT_STATE_PKG _robot_realtime_state;//从SDK获取的机械臂实时状态结构体
     rclcpp::TimerBase::SharedPtr _locktimer;
+    //以SDK实时状态包(~100Hz)频率发布运动完成信号(motion_done, mc_queue_len)
+    rclcpp::Publisher<robot_motion_status_msg>::SharedPtr _motion_status_publisher;
 
     int lose_connect_times = 0;
 

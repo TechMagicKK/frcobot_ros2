@@ -22,6 +22,18 @@ This fork extends `MoveL` in `fairino_hardware/src/command_server.cpp` to accept
 
 The `MoveTool` action interface (`techmagic_arm_commander_interfaces/action/MoveTool.action`) is extended with a `blend_radius` field (metres), which the `techmagic_fairino_commander` passes inline to `MoveL`. This lets callers vary blend radius per motion goal — useful for distinguishing transit moves (large radius, smooth arc) from precision approach moves (zero or small radius, sharp stop) without touching the parameter server.
 
+**Motion-completion feedback (`/robot_motion_status`)** — Upstream only exposes robot state via `/nonrt_state_data`, which is published at ~10 Hz from the controller's port-8081 stream. That rate is too coarse to reliably detect *when a queued/blended motion has actually finished*, and the fields it carries lead the true mechanical stop, so a consumer cannot tell "still moving" from "stopped" on a short move.
+
+This fork adds a high-rate (~100 Hz) topic **`/robot_motion_status`** (`fairino_msgs/msg/RobotMotionStatus`). It is published from `robot_command_thread::_getRobotRTState()` in [fairino_hardware/src/command_server.cpp](fairino_hardware/src/command_server.cpp), which already samples the SDK realtime state package (`FRRobot::GetRobotRealTimeState`) on a 10 ms timer. The message carries three fields:
+
+| Field             | Type      | Meaning                                                                                                                                                                                                                     |
+|-------------------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `motion_done`     | `uint8`   | `1` when the commanded motion is complete. Pulses to `1` at blended-segment boundaries while the arm is still moving, so it cannot be trusted on its own.                                                                   |
+| `mc_queue_len`    | `int32`   | Controller motion-queue length. Only rises above `0` when commands back up (long trajectories); stays `0` on short moves, so it is not a reliable "still moving" indicator by itself.                                       |
+| `joint_speed_max` | `float32` | Largest absolute joint speed across all six joints (deg/s), from `actual_qd`. The physical "is the arm moving" signal: `> 0` for any joint motion (including while rounding a blended waypoint) and `~0` only at true rest. |
+
+`techmagic_fairino_commander` subscribes to this topic (best-effort QoS, matching the publisher) to decide when a `MoveTool` / `MoveJoints` goal has finished: it confirms completion only after `motion_done == 1 AND mc_queue_len == 0 AND joint_speed_max < threshold` holds for several consecutive frames. This fixed a class of bugs where the action reported success while the robot was still moving through a blended corner. The `/nonrt_state_data` topic is unchanged and still drives `/joint_states` and controller-state reporting.
+
 ## Known limitations
 
 ### Gripper cannot move in parallel with arm motion

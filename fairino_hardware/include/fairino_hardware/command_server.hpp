@@ -48,6 +48,7 @@ public:
     std::string GetDHCompensation(std::string para);
     std::string GetWeldingBreakOffState(std::string para);
     std::string GetErrorCode(std::string para);
+    std::string GetInverseKin(std::string para);
 
     //普通设置类
     std::string DragTeachSwitch(std::string para);//拖动示教模式切换
@@ -89,11 +90,14 @@ public:
     std::string SetAuxDO(std::string para);
     std::string SetAuxAO(std::string para);
 
-    //外部轴控制
+    //UDP扩展轴控制
     std::string ExtAxisServoOn(std::string para);
     std::string ExtAxisStartJog(std::string para);
     std::string ExtAxisSetHoming(std::string para);
     std::string StopExtAxisJog(std::string para);
+    std::string ExtAxisGetCoord(std::string para);
+    std::string ExtAxisMove(std::string para);
+    std::string ExtAxisSyncMoveJ(std::string para);
     
     //运动指令
     std::string StartJOG(std::string para);
@@ -114,7 +118,7 @@ public:
     std::string PointsOffsetEnable(std::string para);
     std::string PointsOffsetDisable(std::string para);
 
-    //扩展轴控制
+    //485扩展轴控制
     std::string AuxServoSetParam(std::string para);
     std::string AuxServoEnable(std::string para);
     std::string AuxServoSetControlMode(std::string para);
@@ -174,18 +178,19 @@ private:
     rclcpp::Publisher<robot_motion_status_msg>::SharedPtr _motion_status_publisher;
 
     int lose_connect_times = 0;
-
+    int _connect_retry_SDK = 5;
     //函数指针是有作用域的，所以全局函数的指针和类内成员函数的指针定义有很大不同，这里不能用typedef
     int (robot_command_thread:: *funcP)(std::string para);
 
     //用于解析用户发送的ROS接口指令
     void _parseROSCommandData_callback(const std::shared_ptr<remote_cmd_server_srv_msg::Request> req,
                                     std::shared_ptr<remote_cmd_server_srv_msg::Response> res);
+    void _timer_callback();
     void _splitString2List(std::string str,std::list<std::string> &list_data);
     void _splitString2Vec(std::string str,std::vector<std::string> &vector_data);
     void _fillDescPose(std::list<std::string>& data,DescPose& pose);
     void _fillDescTran(std::list<std::string>& data,DescTran& trans);
-    void _fillJointPose(std::list<std::string>& data,JointPos pos);
+    void _fillJointPose(std::list<std::string>& data,JointPos& pos);
     void _getRobotRTState();
     //TODO 使用可变参数模板函数去填装SDK函数所需参数
     // template<typename T,typename ... Ts>
@@ -214,6 +219,7 @@ private:
     {"GetControllerVersion",&robot_command_thread::GetControllerVersion},
     {"GetWeldingBreakOffState",&robot_command_thread::GetWeldingBreakOffState},
     {"GetErrorCode",&robot_command_thread::GetErrorCode},
+    {"GetInverseKin",&robot_command_thread::GetInverseKin},
     {"DragTeachSwitch",&robot_command_thread::DragTeachSwitch},
     {"RobotEnable",&robot_command_thread::RobotEnable},
     {"SetSpeed",&robot_command_thread::SetSpeed},
@@ -249,7 +255,10 @@ private:
     {"ExtAxisServoOn",&robot_command_thread::ExtAxisServoOn},
     {"ExtAxisStartJog",&robot_command_thread::ExtAxisStartJog},
     {"ExtAxisSetHoming",&robot_command_thread::ExtAxisSetHoming},
+    {"ExtAxisSyncMoveJ",&robot_command_thread::ExtAxisSyncMoveJ},
     {"StopExtAxisJog",&robot_command_thread::StopExtAxisJog},
+    {"ExtAxisGetCoord",&robot_command_thread::ExtAxisGetCoord},
+    {"ExtAxisMove",&robot_command_thread::ExtAxisMove},
     {"StartJOG",&robot_command_thread::StartJOG},
     {"StopJOG",&robot_command_thread::StopJOG},
     {"ImmStopJOG",&robot_command_thread::ImmStopJOG},

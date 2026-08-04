@@ -1496,6 +1496,10 @@ std::string robot_command_thread::MoveL(std::string para){
         user = std::stoi(iter_data->str());
         iter_data++;
     }
+    if(iter_data != end){
+        blendR = std::stof(iter_data->str());
+        iter_data++;
+    }
     if (iter_data != end){
         eaxis1 = std::stod(iter_data->str());iter_data++;
         eaxis2 = std::stod(iter_data->str());iter_data++;

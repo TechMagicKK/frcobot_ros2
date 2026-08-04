@@ -2,10 +2,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include "fairino_hardware/version_control.h"
-#include <algorithm>
-#include <chrono>
-#include <cmath>
-#include <thread>
 
 std::atomic_bool _reconnect_flag;
 std::atomic<int> mainerrcode;
@@ -379,32 +375,10 @@ void robot_command_thread::_fillJointPose(std::list<std::string>& data,JointPos&
 }
 
 void robot_command_thread::_getRobotRTState(){
-    const auto rt_start = std::chrono::steady_clock::now();
     static ROBOT_STATE_PKG tmp;
     _ptr_robot->GetRobotRealTimeState(&tmp);
     mainerrcode = tmp.main_code;
     suberrcode = tmp.sub_code;
-
-    // Publish motion-completion signals at the SDK realtime-state rate (~100 Hz) for
-    // move-completion detection. joint_speed_max is the largest absolute joint speed
-    // (deg/s) across all six joints: the physical "is the arm moving" signal, > 0 for
-    // any joint motion and ~0 only at true rest.
-    float joint_speed_max = 0.0f;
-    for (const double joint_speed : tmp.actual_qd) {
-        joint_speed_max = std::max(joint_speed_max, static_cast<float>(std::fabs(joint_speed)));
-    }
-    robot_motion_status_msg motion_status;
-    motion_status.motion_done = static_cast<uint8_t>(tmp.motion_done);
-    motion_status.mc_queue_len = static_cast<int32_t>(tmp.mc_queue_len);
-    motion_status.joint_speed_max = joint_speed_max;
-    _motion_status_publisher->publish(motion_status);
-
-    // [DEBUG] Time the state read + publish above (ms), throttled to once per second.
-    const double rt_elapsed_ms = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now() - rt_start
-    ).count();
-    RCLCPP_DEBUG_THROTTLE(rclcpp::get_logger(LOGGER_NAME), *this->get_clock(), 1000,
-        "[_getRobotRTState] GetRobotRealTimeState + publish took %.3f ms", rt_elapsed_ms);
 }
 
 
@@ -1010,6 +984,8 @@ std::string robot_command_thread::MoveGripper(std::string para){
     uint8_t blocki = std::stoi(list.front());
     // RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"MoveGripper parameters: index=%d, pos=%d, vel=%d, force=%d, max_time=%d, block=%d", index, pos, veli, forcei, max_timei, blocki);
     int ret = _ptr_robot->MoveGripper(index,pos,veli,forcei,max_timei,blocki,0,0,0,0);
+    // SDK's block bit does not actually wait for gripper motion (async), so when
+    // the caller requests blocking (block==0) we poll GetGripperMotionDone ourselves.
     if (ret == 0 && blocki == 0) {
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(max_timei);
         uint16_t fault = 0;

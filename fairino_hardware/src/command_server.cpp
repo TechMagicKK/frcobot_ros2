@@ -75,7 +75,6 @@ char* msgout[] = {
     "Parameter fomart:index,x,y,z,r,p,y,please input correct format",
     "Invalid command GET parameter",
     "Illegal command GET parameter,format:[JNT|CART],[index]",
-    "Joint/Cartesean position container index out of range",
     "Forward kinematic error occur,please check input point",
     "Inverse kinematic error occur,please check input point",
     "Invalid container index,can't find the point",
@@ -1370,9 +1369,10 @@ std::string robot_command_thread::MoveJ(std::string para){
             return "-1";
         }
         tmp_jnt_pos = _cmd_jnt_pos_list.at(index-1);
-        if(_ptr_robot->GetForwardKin(&tmp_jnt_pos,&cartpos) != 0){
-            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(fwd_kin_error)]);
-            return "-1";
+        // Return the SDK error code (robot_error.h) rather than -1 so the caller can tell why it failed.
+        if(int kin_err = _ptr_robot->GetForwardKin(&tmp_jnt_pos,&cartpos); kin_err != 0){
+            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(fwd_kin_error)],kin_err);
+            return std::to_string(kin_err);
         }
         RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"返回正向运动学结果:%f,%f,%f,%f,%f,%f",cartpos.tran.x,\
             cartpos.tran.y,cartpos.tran.z,cartpos.rpy.rx,cartpos.rpy.ry,cartpos.rpy.rz);
@@ -1383,9 +1383,10 @@ std::string robot_command_thread::MoveJ(std::string para){
             return "-1";
         }
         cartpos = _cmd_cart_pos_list.at(index-1);
-        if(_ptr_robot->GetInverseKin(0,&cartpos,-1,&tmp_jnt_pos) != 0){
-            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(inv_kin_error)]);
-            return "-1";
+        // Return the SDK error code (robot_error.h) rather than -1 so the caller can tell why it failed.
+        if(int kin_err = _ptr_robot->GetInverseKin(0,&cartpos,-1,&tmp_jnt_pos); kin_err != 0){
+            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(inv_kin_error)],kin_err);
+            return std::to_string(kin_err);
         }
         RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"返回逆向运动学结果:%f,%f,%f,%f,%f,%f",tmp_jnt_pos.jPos[0],\
             tmp_jnt_pos.jPos[1],tmp_jnt_pos.jPos[2],tmp_jnt_pos.jPos[3],tmp_jnt_pos.jPos[4],tmp_jnt_pos.jPos[5]);
@@ -1463,9 +1464,10 @@ std::string robot_command_thread::MoveL(std::string para){
             return "-1";
         }
         tmp_jnt_pos = _cmd_jnt_pos_list.at(index-1);
-        if(_ptr_robot->GetForwardKin(&tmp_jnt_pos,&cartpos) != 0){
-            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(fwd_kin_error)]);
-            return "-1";
+        // Return the SDK error code (robot_error.h) rather than -1 so the caller can tell why it failed.
+        if(int kin_err = _ptr_robot->GetForwardKin(&tmp_jnt_pos,&cartpos); kin_err != 0){
+            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(fwd_kin_error)],kin_err);
+            return std::to_string(kin_err);
         }
     }else if(std::regex_match(head_str,num_match,std::regex("(CART)([0-9]*)"))){
         int index = atol(num_match[2].str().c_str());
@@ -1474,9 +1476,10 @@ std::string robot_command_thread::MoveL(std::string para){
             return "-1";
         }
         cartpos = _cmd_cart_pos_list.at(index-1);
-        if(_ptr_robot->GetInverseKin(0,&cartpos,-1,&tmp_jnt_pos) != 0){
-            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(inv_kin_error)]);
-            return "-1";
+        // Return the SDK error code (robot_error.h) rather than -1 so the caller can tell why it failed.
+        if(int kin_err = _ptr_robot->GetInverseKin(0,&cartpos,-1,&tmp_jnt_pos); kin_err != 0){
+            RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(inv_kin_error)],kin_err);
+            return std::to_string(kin_err);
         }
     }else{
         RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(invalid_container_index)]);

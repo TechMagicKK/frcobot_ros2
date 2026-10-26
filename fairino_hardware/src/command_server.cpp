@@ -1427,6 +1427,12 @@ std::string robot_command_thread::MoveJ(std::string para){
         eaxis3 = std::stod(iter_data->str());iter_data++;
         eaxis4 = std::stod(iter_data->str());iter_data++;
     }
+    // Optional 9th argument: blendT for this call ([-1] blocking, [0~500] ms non-blocking), overriding
+    // the MoveJ_blendT parameter. Lets a caller queue a non-blocking MoveJ (e.g. to run a gripper move
+    // during it) without changing the parameter other callers rely on.
+    if (iter_data != end){
+        blendT = std::stof(iter_data->str());iter_data++;
+    }
     ExaxisPos extpos{eaxis1,eaxis2,eaxis3,eaxis4};
     DescPose offsetpos{offset_pos_x,offset_pos_y,offset_pos_z,offset_pos_rx,offset_pos_ry,offset_pos_rz};
 

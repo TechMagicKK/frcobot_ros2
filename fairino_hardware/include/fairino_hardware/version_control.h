@@ -21,6 +21,14 @@ V3.0.4 新增扩展轴状态数组
 #define VERSION_MSG_MINOR 0
 #define VERSION_MSG_MINOR2 4
 
+//日志语言选择 / Log language: enable exactly one
+//#define CHN_VERSION
 #define ENG_VERSION
-//#define ENG_VERSION
+
+//FR_MSG(中文, English): 按上面选择的语言返回日志文本 / pick the log text for the selected language
+#ifdef CHN_VERSION
+#define FR_MSG(zh, en) zh
+#else
+#define FR_MSG(zh, en) en
+#endif
 #endif

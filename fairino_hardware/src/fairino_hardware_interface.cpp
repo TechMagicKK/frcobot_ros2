@@ -1,4 +1,5 @@
 #include "fairino_hardware/fairino_hardware_interface.hpp"
+#include "fairino_hardware/version_control.h"
 
 namespace fairino_hardware{
 
@@ -120,10 +121,10 @@ hardware_interface::CallbackReturn FairinoHardwareInterface::on_activate(const r
     errno_t returncode = _ptr_robot->RPC(_controller_ip.c_str());//建立xmlrpc连接
     rclcpp::sleep_for(200ms);//等待一段时间让控制器的rpc连接建立完毕
     if(returncode != 0){
-        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), "机械臂SDK连接失败！请检查端口时候被占用");
+        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), FR_MSG("机械臂SDK连接失败！请检查端口时候被占用", "Robot SDK connection failed! Check whether the port is already in use"));
         return hardware_interface::CallbackReturn::ERROR;
     }else{
-        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), "机械臂SDK连接成功！");
+        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), FR_MSG("机械臂SDK连接成功！", "Robot SDK connected!"));
     }
     //做第一步的工作，读取当前状态数据
     JointPos jntpos;
@@ -136,12 +137,12 @@ hardware_interface::CallbackReturn FairinoHardwareInterface::on_activate(const r
         for(int j=0;j<6;j++){
             _jnt_position_command[j] = jntpos.jPos[j]/180.0*M_PI;
         }
-        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"),"初始指令位置: %f,%f,%f,%f,%f,%f",_jnt_position_command[0],\
+        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"),FR_MSG("初始指令位置: %f,%f,%f,%f,%f,%f", "Initial command position: %f,%f,%f,%f,%f,%f"),_jnt_position_command[0],\
         _jnt_position_command[1],_jnt_position_command[2],_jnt_position_command[3],_jnt_position_command[4],_jnt_position_command[5]);    
-        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), "机械臂硬件启动成功!");
+        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), FR_MSG("机械臂硬件启动成功!", "Robot hardware started successfully!"));
         return hardware_interface::CallbackReturn::SUCCESS;
     }else{
-        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), "读取初始关节角度错误，硬件无法启动！请检查通讯内容");
+        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), FR_MSG("读取初始关节角度错误，硬件无法启动！请检查通讯内容", "Failed to read initial joint angles, hardware cannot start! Check the communication"));
         return hardware_interface::CallbackReturn::ERROR;
     }
 }
@@ -195,7 +196,7 @@ hardware_interface::return_type FairinoHardwareInterface::write(const rclcpp::Ti
             cmd.jPos[0],cmd.jPos[1],cmd.jPos[2],cmd.jPos[3],cmd.jPos[4],cmd.jPos[5]);
         int returncode = _ptr_robot->ServoJ(&cmd,&extcmd,0,0,0.008,0,0);
         if(returncode != 0){
-            RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), "ServoJ指令下发错误,错误码:%d",returncode);
+            RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), FR_MSG("ServoJ指令下发错误,错误码:%d", "ServoJ command failed, error code: %d"),returncode);
         }
     }else if(_control_mode == 1){//扭矩控制模式
         if (std::any_of(&_jnt_torque_command[0], &_jnt_torque_command[5],\
@@ -204,7 +205,7 @@ hardware_interface::return_type FairinoHardwareInterface::write(const rclcpp::Ti
         }
         //_ptr_robot->write(_jnt_torque_command);//注意单位转换
     }else{
-        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), "指令发送错误:未识别当前所处控制模式");
+        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), FR_MSG("指令发送错误:未识别当前所处控制模式", "Command send error: current control mode not recognized"));
         return hardware_interface::return_type::ERROR;
     }
  

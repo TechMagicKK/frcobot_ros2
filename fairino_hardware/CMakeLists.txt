@@ -52,7 +52,7 @@ target_include_directories(ros2_cmd_server PUBLIC
 ${CMAKE_CURRENT_SOURCE_DIR}/include/ 
 ${CMAKE_CURRENT_SOURCE_DIR}/)
 
-target_include_directories(srv_test_client PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/examples/include)
+target_include_directories(srv_test_client PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/examples/include ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(fairino_hardware PUBLIC 
 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/>

@@ -1,4 +1,5 @@
 #include "srv_test_client.hpp"
+#include "fairino_hardware/version_control.h"
 
 srv_test_node::srv_test_node(const std::string node_name):Node(node_name){
     using namespace std::chrono_literals;
@@ -24,10 +25,10 @@ srv_test_node::srv_test_node(const std::string node_name):Node(node_name){
     _watchdog = this->create_wall_timer(5s,watchdog_callback);//5s检查一次队列,如果有等待消息则清除
     if(!_client_ptr->wait_for_service(1s)){
         if(!rclcpp::ok()){
-            std::cout << "ROS通讯错误:ROS非正常运行" << std::endl;
+            std::cout << FR_MSG("ROS通讯错误:ROS非正常运行", "ROS communication error: ROS is not running normally") << std::endl;
             _locktimer->cancel();
         }else{
-            std::cout << "ROS通讯等待超时:没有检测到service启动" << std::endl;
+            std::cout << FR_MSG("ROS通讯等待超时:没有检测到service启动", "ROS communication timeout: service not detected") << std::endl;
                 _locktimer->cancel();
         }
     }
@@ -41,7 +42,7 @@ void srv_test_node::_get_response_callback(rclcpp::Client<fairino_msgs::srv::Rem
     auto request_response_pair = future.get();
     std::string req_str = request_response_pair.first->cmd_str;
     std::string res_str = request_response_pair.second->cmd_res;
-    std::cout << "命令" + req_str + "的回复信息为" + res_str << std::endl; 
+    std::cout << std::string(FR_MSG("命令", "Reply to command ")) + req_str + FR_MSG("的回复信息为", ": ") + res_str << std::endl; 
 }
 
 int srv_test_node::write_command(const std::string str){  

@@ -1374,7 +1374,7 @@ std::string robot_command_thread::MoveJ(std::string para){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(fwd_kin_error)],kin_err);
             return std::to_string(kin_err);
         }
-        RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"返回正向运动学结果:%f,%f,%f,%f,%f,%f",cartpos.tran.x,\
+        RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),FR_MSG("返回正向运动学结果:%f,%f,%f,%f,%f,%f", "Forward kinematics result: %f,%f,%f,%f,%f,%f"),cartpos.tran.x,\
             cartpos.tran.y,cartpos.tran.z,cartpos.rpy.rx,cartpos.rpy.ry,cartpos.rpy.rz);
     }else if(std::regex_match(head_str,num_match,std::regex("(CART)([0-9]*)"))){
         int index = atol(num_match[2].str().c_str());
@@ -1388,7 +1388,7 @@ std::string robot_command_thread::MoveJ(std::string para){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(inv_kin_error)],kin_err);
             return std::to_string(kin_err);
         }
-        RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"返回逆向运动学结果:%f,%f,%f,%f,%f,%f",tmp_jnt_pos.jPos[0],\
+        RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),FR_MSG("返回逆向运动学结果:%f,%f,%f,%f,%f,%f", "Inverse kinematics result: %f,%f,%f,%f,%f,%f"),tmp_jnt_pos.jPos[0],\
             tmp_jnt_pos.jPos[1],tmp_jnt_pos.jPos[2],tmp_jnt_pos.jPos[3],tmp_jnt_pos.jPos[4],tmp_jnt_pos.jPos[5]);
     }else{
         RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(invalid_container_index)]);
@@ -2411,8 +2411,8 @@ std::string robot_command_thread::LuaDownLoad(std::string para){
 std::string robot_command_thread::LuaUpload(std::string para){
     //string filepath
     int res = _ptr_robot->LuaUpload(para);
-    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"上传LUA脚本名称为:%s",para.c_str());
-    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"上传LUA脚本调用SDK的结果为:%i",res);
+    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),FR_MSG("上传LUA脚本名称为:%s", "Uploading Lua script: %s"),para.c_str());
+    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),FR_MSG("上传LUA脚本调用SDK的结果为:%i", "Lua script upload SDK result: %i"),res);
     RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"LUA upload result:%i",res);
     return std::to_string(res);
 }

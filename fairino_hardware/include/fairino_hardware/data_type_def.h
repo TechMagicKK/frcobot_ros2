@@ -13,8 +13,8 @@
 #define NONRT_PACKAGE_SIZE sizeof(FR_nonrt_state)
 /******************************/
 
-/*用于控制器IP地址的宏定义*/
-#define CONTROLLER_IP "192.168.57.2"
+/*控制器IP地址: CONTROLLER_IP 与 robot_ip_from_env() 定义于 controller_ip.h*/
+#include "controller_ip.h"
 /******************************/
 
 /*用于接受缓存大小的宏定义*/

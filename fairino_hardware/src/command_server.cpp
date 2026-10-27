@@ -204,8 +204,8 @@ robot_command_thread::robot_command_thread(const std::string node_name):rclcpp::
     /*********************************************************************************************/
 
     /********************************尝试使用SDK库连接机械臂******************************************/
-    _controller_ip = CONTROLLER_IP;//控制器默认ip地址
-    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"Robot ip:%s",CONTROLLER_IP);
+    _controller_ip = robot_ip_from_env();//控制器ip地址,取自环境变量ROBOT_IP
+    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"Robot ip:%s",_controller_ip.c_str());
 
     //打印输出版本信息及其他前置信息
     RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(hello)]);
@@ -2584,7 +2584,7 @@ std::string robot_command_thread::WeldingAbortWeldAfterBreakOff(std::string para
  */
 robot_recv_thread::robot_recv_thread(const std::string node_name):rclcpp::Node(node_name){
     using namespace std::chrono_literals;
-    _controller_ip = CONTROLLER_IP;//控制器默认ip地址
+    _controller_ip = robot_ip_from_env();//控制器ip地址,取自环境变量ROBOT_IP
     RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(create_state_feedback)]);
 
     //只保留8081端口的连接，8083连接传输的数据已经不用

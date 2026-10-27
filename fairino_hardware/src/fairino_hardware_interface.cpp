@@ -62,6 +62,14 @@ hardware_interface::CallbackReturn FairinoHardwareInterface::on_init(const hardw
         // }
 
     }
+    //优先使用<hardware>参数controller_ip,否则与ros2_cmd_server一致:环境变量ROBOT_IP,再否则CONTROLLER_IP
+    if (info_.hardware_parameters.find("controller_ip") == info_.hardware_parameters.end()) {
+        _controller_ip = robot_ip_from_env();
+        RCLCPP_WARN(rclcpp::get_logger("FairinoHardwareInterface"),
+                    "Hardware parameter 'controller_ip' not found. Using ROBOT_IP or default: '%s'", _controller_ip.c_str());
+    } else {
+        _controller_ip = info_.hardware_parameters["controller_ip"];
+    }
     return hardware_interface::CallbackReturn::SUCCESS;
 }//end on_init
 

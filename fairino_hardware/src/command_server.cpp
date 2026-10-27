@@ -1,7 +1,6 @@
 #include "fairino_hardware/command_server.hpp"
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <cstdlib>
 #include "fairino_hardware/version_control.h"
 
 std::atomic_bool _reconnect_flag;
@@ -9,12 +8,6 @@ std::atomic<int> mainerrcode;
 std::atomic<int> suberrcode;
 
 #define LOGGER_NAME "fairino_ros2_command_server"
-
-//控制器ip地址取自环境变量ROBOT_IP,未设置时使用默认CONTROLLER_IP
-static std::string robot_ip_from_env(){
-    const char* ip = std::getenv("ROBOT_IP");
-    return (ip != nullptr && ip[0] != '\0') ? std::string(ip) : std::string(CONTROLLER_IP);
-}
 
 #ifdef CHN_VERSION
 char* msgout[] = {

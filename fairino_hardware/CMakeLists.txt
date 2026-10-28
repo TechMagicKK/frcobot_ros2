@@ -17,6 +17,7 @@ find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(fairino_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 
 #set variable
@@ -62,7 +63,7 @@ target_link_libraries(ros2_cmd_server ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib
 target_link_libraries(fairino_hardware ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so)
 
 #add dependencies
-ament_target_dependencies(ros2_cmd_server rclcpp fairino_msgs)
+ament_target_dependencies(ros2_cmd_server rclcpp fairino_msgs std_srvs)
 ament_target_dependencies(srv_test_client rclcpp fairino_msgs)
 ament_target_dependencies(fairino_hardware 
   hardware_interface

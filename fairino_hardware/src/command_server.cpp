@@ -201,6 +201,19 @@ robot_command_thread::robot_command_thread(const std::string node_name):rclcpp::
             std::placeholders::_1,\
             std::placeholders::_2)
         );
+    // Separate stop service on its own callback group: the command service above runs one call at
+    // a time, so a StopMotion() sent through it waits behind a blocking MoveJ/MoveL. This one runs
+    // concurrently and stops the arm mid-move. The command service's StopMotion() is unchanged.
+    _stop_motion_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    _stop_motion_server = this->create_service<std_srvs::srv::Trigger>(
+        STOP_MOTION_SERVER_NAME,
+        std::bind(&robot_command_thread::_stopMotion_callback,\
+            this,\
+            std::placeholders::_1,\
+            std::placeholders::_2),
+        rclcpp::ServicesQoS(),
+        _stop_motion_callback_group
+        );
     /*********************************************************************************************/
 
     /********************************尝试使用SDK库连接机械臂******************************************/
@@ -1414,6 +1427,12 @@ std::string robot_command_thread::MoveJ(std::string para){
         eaxis3 = std::stod(iter_data->str());iter_data++;
         eaxis4 = std::stod(iter_data->str());iter_data++;
     }
+    // Optional 9th argument: blendT for this call ([-1] blocking, [0~500] ms non-blocking), overriding
+    // the MoveJ_blendT parameter. Lets a caller queue a non-blocking MoveJ (e.g. to run a gripper move
+    // during it) without changing the parameter other callers rely on.
+    if (iter_data != end){
+        blendT = std::stof(iter_data->str());iter_data++;
+    }
     ExaxisPos extpos{eaxis1,eaxis2,eaxis3,eaxis4};
     DescPose offsetpos{offset_pos_x,offset_pos_y,offset_pos_z,offset_pos_rx,offset_pos_ry,offset_pos_rz};
 
@@ -1848,6 +1867,76 @@ std::string robot_command_thread::StopMotion(std::string para){
     //empty para
     para.clear();
     return std::to_string(_ptr_robot->StopMotion());
+}
+
+/**
+ * @brief Stop service callback (STOP_MOTION_SERVER_NAME). Runs on its own callback group, so it is
+ *        handled while the command service is blocked inside a MoveJ/MoveL.
+ */
+void robot_command_thread::_stopMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                                                std::shared_ptr<std_srvs::srv::Trigger::Response> res){
+    (void)req;
+    std::string error;
+    const int code = _xmlrpcStopMotion(error);
+    res->success = (code == 0);
+    res->message = error.empty() ? "StopMotion returned " + std::to_string(code) : error;
+    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME), "Stop service: %s", res->message.c_str());
+}
+
+/**
+ * @brief Send StopMotion to the controller on a fresh XML-RPC connection (port 20003).
+ *        The SDK object may be busy inside a blocking MoveJ/MoveL on another thread, and the SDK
+ *        is closed source, so it is not called concurrently; the controller itself accepts
+ *        StopMotion on a second connection while a blocking move is in progress.
+ * @param [out] error - empty on a well-formed reply, otherwise what went wrong
+ * @return the controller's return code (0 = success), or -1 on a transport/parse failure
+ */
+int robot_command_thread::_xmlrpcStopMotion(std::string &error){
+    const int port = 20003;
+    const std::string body =
+        "<?xml version=\"1.0\"?><methodCall><methodName>StopMotion</methodName><params></params></methodCall>";
+    const std::string request =
+        "POST /RPC2 HTTP/1.1\r\nHost: " + _controller_ip + ":" + std::to_string(port) +
+        "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(body.size()) +
+        "\r\nConnection: close\r\n\r\n" + body;
+
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        error = "socket() failed";
+        return -1;
+    }
+    timeval timeout{2, 0};   // also bounds connect() on Linux
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(_controller_ip.c_str());
+    if (connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
+        close(fd);
+        error = "connect to " + _controller_ip + ":" + std::to_string(port) + " failed";
+        return -1;
+    }
+    if (send(fd, request.data(), request.size(), 0) != static_cast<ssize_t>(request.size())) {
+        close(fd);
+        error = "send failed";
+        return -1;
+    }
+    std::string reply;
+    char buf[1024];
+    ssize_t n;
+    while ((n = recv(fd, buf, sizeof(buf), 0)) > 0) {
+        reply.append(buf, n);
+    }
+    close(fd);
+
+    // The reply carries one integer: <int>N</int> or <i4>N</i4>
+    std::smatch m;
+    if (!std::regex_search(reply, m, std::regex("<(int|i4)>\\s*(-?[0-9]+)\\s*</(int|i4)>"))) {
+        error = "unexpected XML-RPC reply: " + reply.substr(0, 200);
+        return -1;
+    }
+    return std::stoi(m[2].str());
 }
 
 /**

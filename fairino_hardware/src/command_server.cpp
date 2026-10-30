@@ -214,6 +214,26 @@ robot_command_thread::robot_command_thread(const std::string node_name):rclcpp::
         rclcpp::ServicesQoS(),
         _stop_motion_callback_group
         );
+    // Pause / resume share the stop service's group: each is one short XML-RPC call, and a stop must
+    // not overtake a pause or resume that is still being sent.
+    _pause_motion_server = this->create_service<std_srvs::srv::Trigger>(
+        PAUSE_MOTION_SERVER_NAME,
+        std::bind(&robot_command_thread::_pauseMotion_callback,\
+            this,\
+            std::placeholders::_1,\
+            std::placeholders::_2),
+        rclcpp::ServicesQoS(),
+        _stop_motion_callback_group
+        );
+    _resume_motion_server = this->create_service<std_srvs::srv::Trigger>(
+        RESUME_MOTION_SERVER_NAME,
+        std::bind(&robot_command_thread::_resumeMotion_callback,\
+            this,\
+            std::placeholders::_1,\
+            std::placeholders::_2),
+        rclcpp::ServicesQoS(),
+        _stop_motion_callback_group
+        );
     /*********************************************************************************************/
 
     /********************************尝试使用SDK库连接机械臂******************************************/
@@ -1876,25 +1896,53 @@ std::string robot_command_thread::StopMotion(std::string para){
 void robot_command_thread::_stopMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                                                 std::shared_ptr<std_srvs::srv::Trigger::Response> res){
     (void)req;
-    std::string error;
-    const int code = _xmlrpcStopMotion(error);
-    res->success = (code == 0);
-    res->message = error.empty() ? "StopMotion returned " + std::to_string(code) : error;
-    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME), "Stop service: %s", res->message.c_str());
+    _xmlrpcTrigger("StopMotion", res);
 }
 
 /**
- * @brief Send StopMotion to the controller on a fresh XML-RPC connection (port 20003).
+ * @brief Pause service callback (PAUSE_MOTION_SERVER_NAME): holds the arm mid-move until a resume.
+ */
+void robot_command_thread::_pauseMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                                                 std::shared_ptr<std_srvs::srv::Trigger::Response> res){
+    (void)req;
+    _xmlrpcTrigger("PauseMotion", res);
+}
+
+/**
+ * @brief Resume service callback (RESUME_MOTION_SERVER_NAME): continues a move held by a pause.
+ */
+void robot_command_thread::_resumeMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                                                  std::shared_ptr<std_srvs::srv::Trigger::Response> res){
+    (void)req;
+    _xmlrpcTrigger("ResumeMotion", res);
+}
+
+/**
+ * @brief Run one parameterless controller method over XML-RPC and fill a Trigger response with it.
+ * @param [in] method - XML-RPC method name, e.g. StopMotion
+ */
+void robot_command_thread::_xmlrpcTrigger(const std::string &method,
+                                          std::shared_ptr<std_srvs::srv::Trigger::Response> res){
+    std::string error;
+    const int code = _xmlrpcCall(method, error);
+    res->success = (code == 0);
+    res->message = error.empty() ? method + " returned " + std::to_string(code) : error;
+    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME), "%s service: %s", method.c_str(), res->message.c_str());
+}
+
+/**
+ * @brief Send a parameterless method to the controller on a fresh XML-RPC connection (port 20003).
  *        The SDK object may be busy inside a blocking MoveJ/MoveL on another thread, and the SDK
  *        is closed source, so it is not called concurrently; the controller itself accepts
  *        StopMotion on a second connection while a blocking move is in progress.
+ * @param [in] method - XML-RPC method name (StopMotion, PauseMotion, ResumeMotion)
  * @param [out] error - empty on a well-formed reply, otherwise what went wrong
  * @return the controller's return code (0 = success), or -1 on a transport/parse failure
  */
-int robot_command_thread::_xmlrpcStopMotion(std::string &error){
+int robot_command_thread::_xmlrpcCall(const std::string &method, std::string &error){
     const int port = 20003;
     const std::string body =
-        "<?xml version=\"1.0\"?><methodCall><methodName>StopMotion</methodName><params></params></methodCall>";
+        "<?xml version=\"1.0\"?><methodCall><methodName>" + method + "</methodName><params></params></methodCall>";
     const std::string request =
         "POST /RPC2 HTTP/1.1\r\nHost: " + _controller_ip + ":" + std::to_string(port) +
         "\r\nContent-Type: text/xml\r\nContent-Length: " + std::to_string(body.size()) +

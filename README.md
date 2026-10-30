@@ -35,6 +35,15 @@ only runs after a blocking move has finished. The stop service runs on its own c
 ros2 service call /fairino_stop_motion_service std_srvs/srv/Trigger
 ```
 
+**Pause / resume services** — `fairino_pause_motion_service` and `fairino_resume_motion_service`
+(`std_srvs/srv/Trigger`) send `PauseMotion` / `ResumeMotion` the same way, so they act on a blocking move in
+flight. `techmagic_fairino_commander` uses them to keep the arm paused for a while after a safety scanner clears.
+
+```bash
+ros2 service call /fairino_pause_motion_service std_srvs/srv/Trigger
+ros2 service call /fairino_resume_motion_service std_srvs/srv/Trigger
+```
+
 ## Gripper and arm motion in parallel
 
 The controller runs commands in the order they are queued. A gripper move overlaps an arm move only when the

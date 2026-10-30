@@ -32,6 +32,10 @@ using robot_motion_status_msg = fairino_msgs::msg::RobotMotionStatus;
 // Stop service that runs alongside a blocking command: the command service handles one call at a
 // time, so StopMotion() sent through it waits until a blocking MoveJ/MoveL has finished.
 #define STOP_MOTION_SERVER_NAME  "fairino_stop_motion_service"
+// Pause / resume services, on the stop service's callback group for the same reason: they must act on the
+// move the command service is blocked in.
+#define PAUSE_MOTION_SERVER_NAME  "fairino_pause_motion_service"
+#define RESUME_MOTION_SERVER_NAME  "fairino_resume_motion_service"
 
 
 class robot_command_thread:public rclcpp::Node{
@@ -200,7 +204,13 @@ private:
     //Stop service callback: sends StopMotion to the controller on its own XML-RPC connection
     void _stopMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                               std::shared_ptr<std_srvs::srv::Trigger::Response> res);
-    int _xmlrpcStopMotion(std::string &error);
+    //Pause / resume service callbacks: PauseMotion / ResumeMotion on their own XML-RPC connection
+    void _pauseMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                               std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+    void _resumeMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                                std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+    void _xmlrpcTrigger(const std::string &method, std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+    int _xmlrpcCall(const std::string &method, std::string &error);
     //TODO 使用可变参数模板函数去填装SDK函数所需参数
     // template<typename T,typename ... Ts>
     // void _recurseVar(T& first_arg,Ts&... args);
@@ -217,6 +227,8 @@ private:
     //Stop service on its own callback group, so it runs while the command service is blocked
     rclcpp::CallbackGroup::SharedPtr _stop_motion_callback_group;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr _stop_motion_server;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr _pause_motion_server;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr _resume_motion_server;
     int _robot_install;//机械臂安装方式
     std::vector<JointPos> _cmd_jnt_pos_list;//存储关节数据点
     std::vector<DescPose> _cmd_cart_pos_list;//存储笛卡尔数据点

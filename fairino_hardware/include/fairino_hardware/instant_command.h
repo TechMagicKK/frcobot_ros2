@@ -57,20 +57,24 @@ namespace fairino_instant_command
         return fields;
     }
 
-    /** The controller's reply accepts the command (same rule as the SDK's send_message). */
+    /**
+     * The controller's reply accepts the command: the SDK's send_message rule (six fields, field 4 is "1"),
+     * plus a complete frame, so a reply cut off after the status field is not taken as an acceptance.
+     */
     inline bool accepted(const std::string &reply)
     {
         const auto fields = splitFields(reply);
-        return fields.size() == kReplyFields && fields[kReplyStatusField] == kAccepted;
+        return fields.size() == kReplyFields && fields[kReplyStatusField] == kAccepted &&
+               fields[kReplyFields - 1] == kFrameEnd;
     }
 
     /**
      * Sends one frame on a fresh connection and reads the reply.
      *
      * @param timeout bounds connect, send and each receive
-     * @param reply   what the controller answered (possibly empty)
+     * @param reply   what the controller answered (possibly partial)
      * @param error   empty unless the transport failed
-     * @return the frame was sent and a reply read
+     * @return the frame was sent and a complete reply (ending in the frame end) read
      */
     inline bool send(const std::string &ip, int port, const std::string &frameText, timeval timeout,
                      std::string &reply, std::string &error)
@@ -114,6 +118,11 @@ namespace fairino_instant_command
         close(fd);
         if (reply.empty()) {
             error = "no reply from " + ip + ":" + std::to_string(port);
+            return false;
+        }
+        if (reply.find(kFrameEnd) == std::string::npos) {
+            // Closed, timed out or over the size cap before the frame end: whatever it says is not a reply.
+            error = "incomplete reply from " + ip + ":" + std::to_string(port) + ": '" + reply + "'";
             return false;
         }
         return true;

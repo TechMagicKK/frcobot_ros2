@@ -3,6 +3,12 @@
 #include <sys/socket.h>
 #include "fairino_hardware/version_control.h"
 
+namespace {
+// Bounds connect, send and each receive of the stop / pause / resume calls, which run on their own
+// connections while a blocking move holds the SDK.
+constexpr timeval kControllerSocketTimeout{2, 0};
+}
+
 std::atomic_bool _reconnect_flag;
 std::atomic<int> mainerrcode;
 std::atomic<int> suberrcode;
@@ -214,7 +220,7 @@ robot_command_thread::robot_command_thread(const std::string node_name):rclcpp::
         rclcpp::ServicesQoS(),
         _stop_motion_callback_group
         );
-    // Pause / resume share the stop service's group: each is one short XML-RPC call, and a stop must
+    // Pause / resume share the stop service's group: each is one short controller call, and a stop must
     // not overtake a pause or resume that is still being sent.
     _pause_motion_server = this->create_service<std_srvs::srv::Trigger>(
         PAUSE_MOTION_SERVER_NAME,
@@ -1905,7 +1911,7 @@ void robot_command_thread::_stopMotion_callback(const std::shared_ptr<std_srvs::
 void robot_command_thread::_pauseMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                                                  std::shared_ptr<std_srvs::srv::Trigger::Response> res){
     (void)req;
-    _xmlrpcTrigger("PauseMotion", res);
+    _instantCommandTrigger("PauseMotion", fairino_instant_command::kPause, res);
 }
 
 /**
@@ -1914,7 +1920,33 @@ void robot_command_thread::_pauseMotion_callback(const std::shared_ptr<std_srvs:
 void robot_command_thread::_resumeMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                                                   std::shared_ptr<std_srvs::srv::Trigger::Response> res){
     (void)req;
-    _xmlrpcTrigger("ResumeMotion", res);
+    // The SDK's ResumeMotion first refuses while a safety stop input is active (GetSafetyCode, from the
+    // real-time state). This node does not read that state, so the controller's own answer decides; the
+    // commander only resumes once the safety scanner has stayed clear.
+    _instantCommandTrigger("ResumeMotion", fairino_instant_command::kResume, res);
+}
+
+/**
+ * @brief Send one instant command (port 8080, as the SDK does for PauseMotion / ResumeMotion) and fill a
+ *        Trigger response: success only when the controller's reply accepts it.
+ * @param [in] name - method name for the message and log, e.g. PauseMotion
+ */
+void robot_command_thread::_instantCommandTrigger(const std::string &name,
+                                                  const fairino_instant_command::Command &command,
+                                                  std::shared_ptr<std_srvs::srv::Trigger::Response> res){
+    std::string reply;
+    std::string error;
+    const bool replied = fairino_instant_command::send(_controller_ip, fairino_instant_command::kPort,
+                                                       fairino_instant_command::frame(command),
+                                                       kControllerSocketTimeout, reply, error);
+    res->success = replied && fairino_instant_command::accepted(reply);
+    if (!replied)
+        res->message = name + " failed: " + error;
+    else if (res->success)
+        res->message = name + " accepted";
+    else
+        res->message = name + " refused by the controller, reply '" + reply + "'";
+    RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME), "%s service: %s", name.c_str(), res->message.c_str());
 }
 
 /**
@@ -1935,7 +1967,7 @@ void robot_command_thread::_xmlrpcTrigger(const std::string &method,
  *        The SDK object may be busy inside a blocking MoveJ/MoveL on another thread, and the SDK
  *        is closed source, so it is not called concurrently; the controller itself accepts
  *        StopMotion on a second connection while a blocking move is in progress.
- * @param [in] method - XML-RPC method name (StopMotion, PauseMotion, ResumeMotion)
+ * @param [in] method - XML-RPC method name (StopMotion)
  * @param [out] error - empty on a well-formed reply, otherwise what went wrong
  * @return the controller's return code (0 = success), or -1 on a transport/parse failure
  */
@@ -1953,7 +1985,7 @@ int robot_command_thread::_xmlrpcCall(const std::string &method, std::string &er
         error = "socket() failed";
         return -1;
     }
-    timeval timeout{2, 0};   // also bounds connect() on Linux
+    const timeval timeout = kControllerSocketTimeout;   // also bounds connect() on Linux
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     sockaddr_in addr{};

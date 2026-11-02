@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <regex>
 #include "data_type_def.h"
+#include "instant_command.h"
 #include <queue>
 #include "libfairino/include/robot.h"
 #include <atomic>
@@ -204,12 +205,14 @@ private:
     //Stop service callback: sends StopMotion to the controller on its own XML-RPC connection
     void _stopMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                               std::shared_ptr<std_srvs::srv::Trigger::Response> res);
-    //Pause / resume service callbacks: PauseMotion / ResumeMotion on their own XML-RPC connection
+    //Pause / resume service callbacks: PauseMotion / ResumeMotion as instant commands on their own connection
     void _pauseMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                                std::shared_ptr<std_srvs::srv::Trigger::Response> res);
     void _resumeMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                                 std::shared_ptr<std_srvs::srv::Trigger::Response> res);
     void _xmlrpcTrigger(const std::string &method, std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+    void _instantCommandTrigger(const std::string &name, const fairino_instant_command::Command &command,
+                                std::shared_ptr<std_srvs::srv::Trigger::Response> res);
     int _xmlrpcCall(const std::string &method, std::string &error);
     //TODO 使用可变参数模板函数去填装SDK函数所需参数
     // template<typename T,typename ... Ts>

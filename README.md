@@ -36,8 +36,10 @@ ros2 service call /fairino_stop_motion_service std_srvs/srv/Trigger
 ```
 
 **Pause / resume services** — `fairino_pause_motion_service` and `fairino_resume_motion_service`
-(`std_srvs/srv/Trigger`) send `PauseMotion` / `ResumeMotion` the same way, so they act on a blocking move in
-flight. `techmagic_fairino_commander` uses them to keep the arm paused for a while after a safety scanner clears.
+(`std_srvs/srv/Trigger`) act on a blocking move in flight too. Like the Fairino Python SDK, they send
+`PauseMotion` / `ResumeMotion` as instant-command frames on the controller's TCP port 8080 (not XML-RPC), each on
+a fresh connection; `success` is true only when the controller's reply accepts the command, and a failure carries
+the raw reply. Unlike the SDK, resume does not pre-check the safety stop inputs: the controller's answer decides. `techmagic_fairino_commander` uses them to keep the arm paused for a while after a safety scanner clears.
 
 ```bash
 ros2 service call /fairino_pause_motion_service std_srvs/srv/Trigger

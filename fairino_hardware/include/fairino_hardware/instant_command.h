@@ -15,6 +15,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -69,9 +70,27 @@ namespace fairino_instant_command
     }
 
     /**
+     * Bounds the next socket call by what is left until `deadline`. False once it has passed. Never sets 0,
+     * which would mean no timeout at all.
+     */
+    inline bool limitTo(int fd, int option, std::chrono::steady_clock::time_point deadline)
+    {
+        const auto left = std::chrono::duration_cast<std::chrono::microseconds>(
+            deadline - std::chrono::steady_clock::now());
+        if (left.count() <= 0)
+            return false;
+        const timeval tv{static_cast<time_t>(left.count() / 1000000),
+                         static_cast<suseconds_t>(left.count() % 1000000)};
+        setsockopt(fd, SOL_SOCKET, option, &tv, sizeof(tv));
+        return true;
+    }
+
+    /**
      * Sends one frame on a fresh connection and reads the reply.
      *
-     * @param timeout bounds connect, send and each receive
+     * @param timeout bounds the whole call: connect, send and every receive together, so a controller
+     *                trickling bytes cannot hold the caller (and the stop service sharing its callback
+     *                group) longer than this
      * @param reply   what the controller answered (possibly partial)
      * @param error   empty unless the transport failed
      * @return the frame was sent and a complete reply (ending in the frame end) read
@@ -86,8 +105,9 @@ namespace fairino_instant_command
             error = "socket() failed";
             return false;
         }
-        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));  // also bounds connect() on Linux
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout.tv_sec) +
+                              std::chrono::microseconds(timeout.tv_usec);
+        limitTo(fd, SO_SNDTIMEO, deadline);  // also bounds connect() on Linux
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
@@ -99,7 +119,7 @@ namespace fairino_instant_command
         }
         size_t sent = 0;
         while (sent < frameText.size()) {
-            const ssize_t n = ::send(fd, frameText.data() + sent, frameText.size() - sent, MSG_NOSIGNAL);
+            const ssize_t n = !limitTo(fd, SO_SNDTIMEO, deadline) ? -1 : ::send(fd, frameText.data() + sent, frameText.size() - sent, MSG_NOSIGNAL);
             if (n <= 0) {
                 close(fd);
                 error = "send to " + ip + ":" + std::to_string(port) + " failed";
@@ -107,9 +127,11 @@ namespace fairino_instant_command
             }
             sent += static_cast<size_t>(n);
         }
-        // Read until the frame end, the peer closes, a timeout, or the size cap: TCP may split the reply.
+        // Read until the frame end, the peer closes, the deadline, or the size cap: TCP may split the reply.
         char buf[256];
         while (reply.size() < kMaxReplyBytes && reply.find(kFrameEnd) == std::string::npos) {
+            if (!limitTo(fd, SO_RCVTIMEO, deadline))
+                break;
             const ssize_t n = recv(fd, buf, sizeof(buf), 0);
             if (n <= 0)
                 break;
@@ -121,7 +143,8 @@ namespace fairino_instant_command
             return false;
         }
         if (reply.find(kFrameEnd) == std::string::npos) {
-            // Closed, timed out or over the size cap before the frame end: whatever it says is not a reply.
+            // Closed, past the deadline or over the size cap before the frame end: whatever it says is not a
+            // reply.
             error = "incomplete reply from " + ip + ":" + std::to_string(port) + ": '" + reply + "'";
             return false;
         }

@@ -61,15 +61,14 @@ Measured on an FR5 (controller V3.8.4.6):
 
 ## Installation
 
-Clone this repository and check out the `mrobo2` branch:
+Clone this repository; the default branch, `main`, is the one to build:
 
 ```bash
 git clone git@github.com:TechMagicKK/frcobot_ros2.git
 cd frcobot_ros2
-git checkout mrobo2
 ```
 
-  The `mrobo2` branch is derived from the `tags/V3.0.0_RobotV3.8.4` tag of the [FAIR-INNOVATION repository](https://github.com/FAIR-INNOVATION/frcobot_ros2.git) as shown below:
+  `main` is derived from the `tags/V3.0.0_RobotV3.8.4` tag of the [FAIR-INNOVATION repository](https://github.com/FAIR-INNOVATION/frcobot_ros2.git) as shown below:
 
   ```bash
   git clone https://github.com/FAIR-INNOVATION/frcobot_ros2.git

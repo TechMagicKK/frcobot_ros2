@@ -9,6 +9,13 @@ std::atomic<int> suberrcode;
 
 #define LOGGER_NAME "fairino_ros2_command_server"
 
+// MoveGripper with block==0 (see robot_command_thread::MoveGripper): after the command is sent,
+// GetGripperMotionDone keeps reporting the previous motion as done until the controller has seen
+// this one start (~15 ms observed). Longest that stale "done" is waited out before the gripper is
+// taken to be at the target already [ms], and the period of the motion-done poll [ms].
+static constexpr int GRIPPER_MOTION_START_TIMEOUT_MS = 300;
+static constexpr int GRIPPER_MOTION_POLL_MS = 50;
+
 #ifdef CHN_VERSION
 char* msgout[] = {
     "ROS2指令服务器创建成功,准备连接机械臂",
@@ -998,15 +1005,46 @@ std::string robot_command_thread::MoveGripper(std::string para){
     int ret = _ptr_robot->MoveGripper(index,pos,veli,forcei,max_timei,blocki,0,0,0,0);
     // SDK's block bit does not actually wait for gripper motion (async), so when
     // the caller requests blocking (block==0) we poll GetGripperMotionDone ourselves.
+    // The done flag still describes the PREVIOUS motion until the controller has seen this
+    // one start, so a poll that returns on the first "done" returns before the fingers move
+    // (about one blocking command in three on the robot). Wait first for the flag to clear,
+    // then for it to set again. A command for the position the gripper already holds never
+    // clears it: that first wait is bounded by GRIPPER_MOTION_START_TIMEOUT_MS.
     if (ret == 0 && blocki == 0) {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(max_timei);
+        const auto sent = std::chrono::steady_clock::now();
+        const auto deadline = sent + std::chrono::milliseconds(max_timei);
+        const auto start_deadline = sent + std::chrono::milliseconds(GRIPPER_MOTION_START_TIMEOUT_MS);
         uint16_t fault = 0;
         uint8_t status = 0;
+        bool started = false;
+        int polls = 0;
+        int first_status = -1;
+        int failed_polls = 0;
         while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
-            _ptr_robot->GetGripperMotionDone(&fault, &status);
-            if (status != 0 || fault != 0) break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            // A failed read leaves fault/status as they were: it says nothing about the
+            // motion, so it neither starts nor ends the wait.
+            if (_ptr_robot->GetGripperMotionDone(&fault, &status) != 0) {
+                ++failed_polls;
+                std::this_thread::sleep_for(std::chrono::milliseconds(GRIPPER_MOTION_POLL_MS));
+                continue;
+            }
+            if (first_status < 0) first_status = status;
+            ++polls;
+            if (fault != 0) break;
+            if (status == 0) {
+                started = true;  // the controller has picked this motion up
+            } else if (started || std::chrono::steady_clock::now() >= start_deadline) {
+                break;           // finished, or never had to move
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(GRIPPER_MOTION_POLL_MS));
         }
+        const auto waited_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - sent).count();
+        RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),
+                    "MoveGripper: blocking wait %ld ms, %d poll(s) (%d failed), first motion-done status=%d, motion %s, "
+                    "fault=%d",
+                    static_cast<long>(waited_ms), polls, failed_polls, first_status, started ? "seen" : "never seen",
+                    fault);
         if (fault != 0) {
             RCLCPP_WARN(rclcpp::get_logger(LOGGER_NAME), "MoveGripper: gripper fault=%d", fault);
         }

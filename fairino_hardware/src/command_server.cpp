@@ -1019,8 +1019,15 @@ std::string robot_command_thread::MoveGripper(std::string para){
         bool started = false;
         int polls = 0;
         int first_status = -1;
+        int failed_polls = 0;
         while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
-            _ptr_robot->GetGripperMotionDone(&fault, &status);
+            // A failed read leaves fault/status as they were: it says nothing about the
+            // motion, so it neither starts nor ends the wait.
+            if (_ptr_robot->GetGripperMotionDone(&fault, &status) != 0) {
+                ++failed_polls;
+                std::this_thread::sleep_for(std::chrono::milliseconds(GRIPPER_MOTION_POLL_MS));
+                continue;
+            }
             if (first_status < 0) first_status = status;
             ++polls;
             if (fault != 0) break;
@@ -1034,8 +1041,10 @@ std::string robot_command_thread::MoveGripper(std::string para){
         const auto waited_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - sent).count();
         RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),
-                    "MoveGripper: blocking wait %ld ms, %d poll(s), first motion-done status=%d, motion %s, fault=%d",
-                    static_cast<long>(waited_ms), polls, first_status, started ? "seen" : "never seen", fault);
+                    "MoveGripper: blocking wait %ld ms, %d poll(s) (%d failed), first motion-done status=%d, motion %s, "
+                    "fault=%d",
+                    static_cast<long>(waited_ms), polls, failed_polls, first_status, started ? "seen" : "never seen",
+                    fault);
         if (fault != 0) {
             RCLCPP_WARN(rclcpp::get_logger(LOGGER_NAME), "MoveGripper: gripper fault=%d", fault);
         }

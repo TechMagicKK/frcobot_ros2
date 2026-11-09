@@ -1,4 +1,5 @@
 #include "fairino_hardware/command_server.hpp"
+#include <cmath>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include "fairino_hardware/version_control.h"
@@ -375,7 +376,8 @@ bool parseDoubleStrict(const std::string& field,double& out){
         const std::string trimmed = trimField(field);
         std::size_t consumed = 0;
         out = std::stod(trimmed,&consumed);
-        return consumed == trimmed.size();
+        // "nan"/"inf" parse, but must never reach the SDK as a pose or joint value.
+        return consumed == trimmed.size() && std::isfinite(out);
     }catch(const std::exception&){
         return false;
     }

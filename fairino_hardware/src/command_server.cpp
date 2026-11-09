@@ -508,9 +508,18 @@ std::string robot_command_thread::defCartPosition(std::string pos){
         add_pos.rpy.rz = atof(iter_data->str().c_str());iter_data++;
         std::optional<JointPos> ref_jnt;
         if(count == 13){
+            // Strict: an empty or partially numeric field (",,", "20..5") must not become a
+            // reference joint of 0 or 20 and silently steer MoveJ/MoveL to another IK branch.
+            // std::stod throws std::invalid_argument on an unparsable field and the callback
+            // replies "-1"; a trailing remainder is rejected the same way.
             JointPos jnt(0,0,0,0,0,0);
             for(int i=0;i<6;i++){
-                jnt.jPos[i] = atof(iter_data->str().c_str());iter_data++;
+                const std::string field = iter_data->str();iter_data++;
+                std::size_t consumed = 0;
+                jnt.jPos[i] = std::stod(field,&consumed);
+                if(consumed != field.size()){
+                    throw std::invalid_argument("CARTPoint: malformed reference joint '" + field + "'");
+                }
             }
             ref_jnt = jnt;
         }

@@ -22,6 +22,7 @@
 #include <queue>
 #include "libfairino/include/robot.h"
 #include <atomic>
+#include <optional>
 
 using remote_cmd_server_srv_msg = fairino_msgs::srv::RemoteCmdInterface;
 using remote_script_srv_msg = fairino_msgs::srv::RemoteScriptContent;
@@ -197,6 +198,7 @@ private:
     void _fillDescPose(std::list<std::string>& data,DescPose& pose);
     void _fillDescTran(std::list<std::string>& data,DescTran& trans);
     void _fillJointPose(std::list<std::string>& data,JointPos& pos);
+    int _solveCartPointIK(int index,DescPose& cartpos,JointPos& jntpos);
     void _getRobotRTState();
     //Stop service callback: sends StopMotion to the controller on its own XML-RPC connection
     void _stopMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
@@ -221,6 +223,10 @@ private:
     int _robot_install;//机械臂安装方式
     std::vector<JointPos> _cmd_jnt_pos_list;//存储关节数据点
     std::vector<DescPose> _cmd_cart_pos_list;//存储笛卡尔数据点
+    // Optional IK reference per CART point (same index as _cmd_cart_pos_list): the joint
+    // solution MoveJ/MoveL solve nearest to instead of the robot's current joints. Set by a
+    // 13-field CARTPoint, cleared by a 7-field one.
+    std::vector<std::optional<JointPos>> _cmd_cart_ref_jnt_list;
     std::string _controller_ip;
     const std::map<std::string,std::string(robot_command_thread::*)(std::string)> _fr_function_list{
     {"JNTPoint",&robot_command_thread::defJntPosition},

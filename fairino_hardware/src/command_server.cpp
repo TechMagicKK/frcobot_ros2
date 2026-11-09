@@ -393,6 +393,21 @@ void robot_command_thread::_fillJointPose(std::list<std::string>& data,JointPos&
     }
 }
 
+/**
+ * @brief Inverse kinematics for CART point `index` (1-based). Solves nearest the joint
+ *        reference stored with the point by a 13-field CARTPoint when there is one, else
+ *        nearest the robot's current joints (config -1). A multi-pose motion is queued
+ *        before the arm reaches the earlier targets, so "current joints" is the wrong
+ *        reference for every pose but the first; the caller supplies the right one.
+ */
+int robot_command_thread::_solveCartPointIK(int index,DescPose& cartpos,JointPos& jntpos){
+    if(index >= 1 && index <= (int)_cmd_cart_ref_jnt_list.size() && _cmd_cart_ref_jnt_list.at(index-1)){
+        JointPos ref = *_cmd_cart_ref_jnt_list.at(index-1);
+        return _ptr_robot->GetInverseKinRef(0,&cartpos,&ref,&jntpos);
+    }
+    return _ptr_robot->GetInverseKin(0,&cartpos,-1,&jntpos);
+}
+
 void robot_command_thread::_getRobotRTState(){
     static ROBOT_STATE_PKG tmp;
     _ptr_robot->GetRobotRealTimeState(&tmp);
@@ -470,7 +485,10 @@ std::string robot_command_thread::defCartPosition(std::string pos){
         for(;iter_data != end;iter_data++){
             count++;
         }
-        if(count != 7){
+        // 7 fields: idx,x,y,z,rx,ry,rz. 13 fields: the same followed by j1..j6, a joint
+        // solution for this pose that MoveJ/MoveL then use as the inverse-kinematics
+        // reference instead of the robot's current joints (see GetInverseKinRef).
+        if(count != 7 && count != 13){
             RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(invalid_cartposnum)]);
             return "-1";
         }
@@ -480,23 +498,29 @@ std::string robot_command_thread::defCartPosition(std::string pos){
         if(idx > _cmd_cart_pos_list.size()+1 || idx <= 0){//如果大于当前容器最大值+1,那么要报错,因为序列容器中间无法留空
             RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(out_container_range)]);
             return "-1";
-        }else if(idx <= _cmd_cart_pos_list.size()){//如果是小于等于当前的容量,那么就是点位信息覆盖
-            _cmd_cart_pos_list.at(idx-1).tran.x = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).tran.y = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).tran.z = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).rpy.rx = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).rpy.ry = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).rpy.rz = atof(iter_data->str().c_str());
-
-        }else if(idx == _cmd_cart_pos_list.size()+1){//添加元素
-            DescPose add_pos;
-                add_pos.tran.x = atof(iter_data->str().c_str());iter_data++;
-                add_pos.tran.y = atof(iter_data->str().c_str());iter_data++;
-                add_pos.tran.z = atof(iter_data->str().c_str());iter_data++;
-                add_pos.rpy.rx = atof(iter_data->str().c_str());iter_data++;
-                add_pos.rpy.ry = atof(iter_data->str().c_str());iter_data++;
-                add_pos.rpy.rz = atof(iter_data->str().c_str());
+        }
+        DescPose add_pos;
+        add_pos.tran.x = atof(iter_data->str().c_str());iter_data++;
+        add_pos.tran.y = atof(iter_data->str().c_str());iter_data++;
+        add_pos.tran.z = atof(iter_data->str().c_str());iter_data++;
+        add_pos.rpy.rx = atof(iter_data->str().c_str());iter_data++;
+        add_pos.rpy.ry = atof(iter_data->str().c_str());iter_data++;
+        add_pos.rpy.rz = atof(iter_data->str().c_str());iter_data++;
+        std::optional<JointPos> ref_jnt;
+        if(count == 13){
+            JointPos jnt(0,0,0,0,0,0);
+            for(int i=0;i<6;i++){
+                jnt.jPos[i] = atof(iter_data->str().c_str());iter_data++;
+            }
+            ref_jnt = jnt;
+        }
+        _cmd_cart_ref_jnt_list.resize(_cmd_cart_pos_list.size());
+        if(idx <= _cmd_cart_pos_list.size()){//如果是小于等于当前的容量,那么就是点位信息覆盖
+            _cmd_cart_pos_list.at(idx-1) = add_pos;
+            _cmd_cart_ref_jnt_list.at(idx-1) = ref_jnt;
+        }else{//添加元素
             _cmd_cart_pos_list.push_back(add_pos);
+            _cmd_cart_ref_jnt_list.push_back(ref_jnt);
         }
     }else{
         RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(invalid_cartcontainer_format)]);
@@ -1435,7 +1459,7 @@ std::string robot_command_thread::MoveJ(std::string para){
         }
         cartpos = _cmd_cart_pos_list.at(index-1);
         // Return the SDK error code (robot_error.h) rather than -1 so the caller can tell why it failed.
-        if(int kin_err = _ptr_robot->GetInverseKin(0,&cartpos,-1,&tmp_jnt_pos); kin_err != 0){
+        if(int kin_err = _solveCartPointIK(index,cartpos,tmp_jnt_pos); kin_err != 0){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(inv_kin_error)],kin_err);
             return std::to_string(kin_err);
         }
@@ -1534,7 +1558,7 @@ std::string robot_command_thread::MoveL(std::string para){
         }
         cartpos = _cmd_cart_pos_list.at(index-1);
         // Return the SDK error code (robot_error.h) rather than -1 so the caller can tell why it failed.
-        if(int kin_err = _ptr_robot->GetInverseKin(0,&cartpos,-1,&tmp_jnt_pos); kin_err != 0){
+        if(int kin_err = _solveCartPointIK(index,cartpos,tmp_jnt_pos); kin_err != 0){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(inv_kin_error)],kin_err);
             return std::to_string(kin_err);
         }
@@ -2355,13 +2379,17 @@ std::string robot_command_thread::GetInverseKin(std::string para){
 std::string robot_command_thread::GetInverseKinRef(std::string para){
     std::list<std::string> list;
     _splitString2List(para,list);
+    if(list.size() != 13){
+        // Handled by the command callback as a wrong parameter count (reply "-1").
+        throw std::logic_error("GetInverseKinRef expects 13 parameters, got " + std::to_string(list.size()));
+    }
 
     int type = std::stoi(list.front());list.pop_front();
     DescPose cartpose;
     _fillDescPose(list,cartpose);
-    JointPos refpose;
+    JointPos refpose(0,0,0,0,0,0);
     _fillJointPose(list,refpose);
-    JointPos jntpose;
+    JointPos jntpose(0,0,0,0,0,0);  // the SDK leaves it untouched on error; reply with zeros, not garbage
     int res = _ptr_robot->GetInverseKinRef(type,&cartpose,&refpose,&jntpose);
     return std::string(std::to_string(res) + "," + std::to_string(jntpose.jPos[0]) + "," +\
             std::to_string(jntpose.jPos[1]) + "," + std::to_string(jntpose.jPos[2]) + "," +\

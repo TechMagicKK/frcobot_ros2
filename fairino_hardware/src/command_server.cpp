@@ -2345,6 +2345,30 @@ std::string robot_command_thread::GetInverseKin(std::string para){
             std::to_string(jntpose.jPos[5]));
 }
 
+/**
+ * @brief Inverse kinematics against a caller-supplied reference joint position, instead of the
+ *        robot's current one (GetInverseKin with config -1). Used to check a multi-pose motion
+ *        pose by pose: the reference for pose k is the solution found for pose k-1.
+ * @param para "type,x,y,z,rx,ry,rz,j1,j2,j3,j4,j5,j6" (pose in mm/deg, reference joints in deg)
+ * @return "code,j1,...,j6" like GetInverseKin
+ */
+std::string robot_command_thread::GetInverseKinRef(std::string para){
+    std::list<std::string> list;
+    _splitString2List(para,list);
+
+    int type = std::stoi(list.front());list.pop_front();
+    DescPose cartpose;
+    _fillDescPose(list,cartpose);
+    JointPos refpose;
+    _fillJointPose(list,refpose);
+    JointPos jntpose;
+    int res = _ptr_robot->GetInverseKinRef(type,&cartpose,&refpose,&jntpose);
+    return std::string(std::to_string(res) + "," + std::to_string(jntpose.jPos[0]) + "," +\
+            std::to_string(jntpose.jPos[1]) + "," + std::to_string(jntpose.jPos[2]) + "," +\
+            std::to_string(jntpose.jPos[3]) + "," + std::to_string(jntpose.jPos[4]) + "," +\
+            std::to_string(jntpose.jPos[5]));
+}
+
 
 /**
  * @brief 可移动设备使能

@@ -54,6 +54,7 @@ public:
     std::string GetWeldingBreakOffState(std::string para);
     std::string GetErrorCode(std::string para);
     std::string GetInverseKin(std::string para);
+    std::string GetInverseKinRef(std::string para);
 
     //普通设置类
     std::string DragTeachSwitch(std::string para);//拖动示教模式切换
@@ -232,6 +233,7 @@ private:
     {"GetWeldingBreakOffState",&robot_command_thread::GetWeldingBreakOffState},
     {"GetErrorCode",&robot_command_thread::GetErrorCode},
     {"GetInverseKin",&robot_command_thread::GetInverseKin},
+    {"GetInverseKinRef",&robot_command_thread::GetInverseKinRef},
     {"DragTeachSwitch",&robot_command_thread::DragTeachSwitch},
     {"RobotEnable",&robot_command_thread::RobotEnable},
     {"SetSpeed",&robot_command_thread::SetSpeed},

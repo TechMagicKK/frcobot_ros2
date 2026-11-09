@@ -22,6 +22,7 @@
 #include <queue>
 #include "libfairino/include/robot.h"
 #include <atomic>
+#include <optional>
 
 using remote_cmd_server_srv_msg = fairino_msgs::srv::RemoteCmdInterface;
 using remote_script_srv_msg = fairino_msgs::srv::RemoteScriptContent;
@@ -54,6 +55,7 @@ public:
     std::string GetWeldingBreakOffState(std::string para);
     std::string GetErrorCode(std::string para);
     std::string GetInverseKin(std::string para);
+    std::string GetInverseKinRef(std::string para);
 
     //普通设置类
     std::string DragTeachSwitch(std::string para);//拖动示教模式切换
@@ -196,6 +198,7 @@ private:
     void _fillDescPose(std::list<std::string>& data,DescPose& pose);
     void _fillDescTran(std::list<std::string>& data,DescTran& trans);
     void _fillJointPose(std::list<std::string>& data,JointPos& pos);
+    int _solveCartPointIK(int index,const DescPose& cartpos,JointPos& jntpos);
     void _getRobotRTState();
     //Stop service callback: sends StopMotion to the controller on its own XML-RPC connection
     void _stopMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
@@ -219,7 +222,14 @@ private:
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr _stop_motion_server;
     int _robot_install;//机械臂安装方式
     std::vector<JointPos> _cmd_jnt_pos_list;//存储关节数据点
-    std::vector<DescPose> _cmd_cart_pos_list;//存储笛卡尔数据点
+    // A CART point with an optional IK reference: the joint solution MoveJ/MoveL solve
+    // nearest to instead of the robot's current joints. Set by a 13-field CARTPoint,
+    // absent after a 7-field one. Kept in one element so the two can never go out of step.
+    struct CartPoint{
+        DescPose pose;
+        std::optional<JointPos> ref_jnt;
+    };
+    std::vector<CartPoint> _cmd_cart_pos_list;//存储笛卡尔数据点
     std::string _controller_ip;
     const std::map<std::string,std::string(robot_command_thread::*)(std::string)> _fr_function_list{
     {"JNTPoint",&robot_command_thread::defJntPosition},
@@ -232,6 +242,7 @@ private:
     {"GetWeldingBreakOffState",&robot_command_thread::GetWeldingBreakOffState},
     {"GetErrorCode",&robot_command_thread::GetErrorCode},
     {"GetInverseKin",&robot_command_thread::GetInverseKin},
+    {"GetInverseKinRef",&robot_command_thread::GetInverseKinRef},
     {"DragTeachSwitch",&robot_command_thread::DragTeachSwitch},
     {"RobotEnable",&robot_command_thread::RobotEnable},
     {"SetSpeed",&robot_command_thread::SetSpeed},

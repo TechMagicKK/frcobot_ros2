@@ -1,4 +1,5 @@
 #include "fairino_hardware/command_server.hpp"
+#include <cmath>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include "fairino_hardware/version_control.h"
@@ -360,6 +361,39 @@ void robot_command_thread::_splitString2Vec(std::string str,std::vector<std::str
  * @param [in] data-list数据，用于存储字符串列表
  * @param [out] pose-输出的DescPose对象
  */
+namespace {
+// Strict numeric parsing: the whole field must be a number. std::stod/std::stoi alone accept
+// "20..5" or "1abc" (prefix parse), and an empty field would otherwise be read as 0.
+// Surrounding whitespace ("1 ", " 1") is tolerated, as a CSV writer may put spaces after commas.
+std::string trimField(const std::string& field){
+    const auto first = field.find_first_not_of(" \t");
+    if(first == std::string::npos) return "";
+    const auto last = field.find_last_not_of(" \t");
+    return field.substr(first,last-first+1);
+}
+bool parseDoubleStrict(const std::string& field,double& out){
+    try{
+        const std::string trimmed = trimField(field);
+        std::size_t consumed = 0;
+        out = std::stod(trimmed,&consumed);
+        // "nan"/"inf" parse, but must never reach the SDK as a pose or joint value.
+        return consumed == trimmed.size() && std::isfinite(out);
+    }catch(const std::exception&){
+        return false;
+    }
+}
+bool parseIntStrict(const std::string& field,int& out){
+    try{
+        const std::string trimmed = trimField(field);
+        std::size_t consumed = 0;
+        out = std::stoi(trimmed,&consumed);
+        return consumed == trimmed.size();
+    }catch(const std::exception&){
+        return false;
+    }
+}
+}  // namespace
+
 void robot_command_thread::_fillDescPose(std::list<std::string>& data,DescPose& pose){
     pose.tran.x = std::stod(data.front().c_str());data.pop_front();
     pose.tran.y = std::stod(data.front().c_str());data.pop_front();
@@ -391,6 +425,25 @@ void robot_command_thread::_fillJointPose(std::list<std::string>& data,JointPos&
         pos.jPos[i] = std::stod(data.front().c_str());
         data.pop_front();
     }
+}
+
+/**
+ * @brief Inverse kinematics for CART point `index` (1-based). Solves nearest the joint
+ *        reference stored with the point by a 13-field CARTPoint when there is one, else
+ *        nearest the robot's current joints (config -1). A multi-pose motion is queued
+ *        before the arm reaches the earlier targets, so "current joints" is the wrong
+ *        reference for every pose but the first; the caller supplies the right one.
+ */
+int robot_command_thread::_solveCartPointIK(int index,const DescPose& cartpos,JointPos& jntpos){
+    DescPose pose = cartpos;  // the SDK takes non-const pointers but does not modify the pose
+    if(index >= 1 && index <= (int)_cmd_cart_pos_list.size()){
+        const CartPoint& point = _cmd_cart_pos_list.at(index-1);
+        if(point.ref_jnt){
+            JointPos ref = *point.ref_jnt;
+            return _ptr_robot->GetInverseKinRef(0,&pose,&ref,&jntpos);
+        }
+    }
+    return _ptr_robot->GetInverseKin(0,&pose,-1,&jntpos);
 }
 
 void robot_command_thread::_getRobotRTState(){
@@ -470,32 +523,53 @@ std::string robot_command_thread::defCartPosition(std::string pos){
         for(;iter_data != end;iter_data++){
             count++;
         }
-        if(count != 7){
+        // 7 fields: idx,x,y,z,rx,ry,rz. 13 fields: the same followed by j1..j6, a joint
+        // solution for this pose that MoveJ/MoveL then use as the inverse-kinematics
+        // reference instead of the robot's current joints (see GetInverseKinRef).
+        if(count != 7 && count != 13){
             RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(invalid_cartposnum)]);
             return "-1";
         }
         iter_data = std::regex_token_iterator(pos.begin(),pos.end(),search_para,-1);
-        int idx = atol(iter_data->str().c_str());//指令序号
+        // Strict: every field must be a whole number/decimal. An empty or partially numeric
+        // field (",,", "20..5") must not silently become 0 or 20, neither in the pose nor in
+        // a reference joint that would steer MoveJ/MoveL to another IK branch. Nothing is
+        // stored on a bad field; the reply is the usual "-1".
+        int idx = 0;//指令序号
+        if(!parseIntStrict(iter_data->str(),idx)){
+            RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),"CARTPoint: malformed index '%s'",iter_data->str().c_str());
+            return "-1";
+        }
         iter_data++;
         if(idx > _cmd_cart_pos_list.size()+1 || idx <= 0){//如果大于当前容器最大值+1,那么要报错,因为序列容器中间无法留空
             RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(out_container_range)]);
             return "-1";
-        }else if(idx <= _cmd_cart_pos_list.size()){//如果是小于等于当前的容量,那么就是点位信息覆盖
-            _cmd_cart_pos_list.at(idx-1).tran.x = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).tran.y = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).tran.z = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).rpy.rx = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).rpy.ry = atof(iter_data->str().c_str());iter_data++;
-            _cmd_cart_pos_list.at(idx-1).rpy.rz = atof(iter_data->str().c_str());
-
-        }else if(idx == _cmd_cart_pos_list.size()+1){//添加元素
-            DescPose add_pos;
-                add_pos.tran.x = atof(iter_data->str().c_str());iter_data++;
-                add_pos.tran.y = atof(iter_data->str().c_str());iter_data++;
-                add_pos.tran.z = atof(iter_data->str().c_str());iter_data++;
-                add_pos.rpy.rx = atof(iter_data->str().c_str());iter_data++;
-                add_pos.rpy.ry = atof(iter_data->str().c_str());iter_data++;
-                add_pos.rpy.rz = atof(iter_data->str().c_str());
+        }
+        CartPoint add_pos;
+        double* const pose_fields[6] = {&add_pos.pose.tran.x,&add_pos.pose.tran.y,&add_pos.pose.tran.z,
+                                        &add_pos.pose.rpy.rx,&add_pos.pose.rpy.ry,&add_pos.pose.rpy.rz};
+        static const char* const pose_names[6] = {"x","y","z","rx","ry","rz"};
+        for(int i=0;i<6;i++){
+            const std::string field = iter_data->str();iter_data++;
+            if(!parseDoubleStrict(field,*pose_fields[i])){
+                RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),"CARTPoint %d: malformed %s '%s'",idx,pose_names[i],field.c_str());
+                return "-1";
+            }
+        }
+        if(count == 13){
+            JointPos jnt(0,0,0,0,0,0);
+            for(int i=0;i<6;i++){
+                const std::string field = iter_data->str();iter_data++;
+                if(!parseDoubleStrict(field,jnt.jPos[i])){
+                    RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),"CARTPoint %d: malformed reference joint j%d '%s'",idx,i+1,field.c_str());
+                    return "-1";
+                }
+            }
+            add_pos.ref_jnt = jnt;
+        }
+        if(idx <= _cmd_cart_pos_list.size()){//如果是小于等于当前的容量,那么就是点位信息覆盖
+            _cmd_cart_pos_list.at(idx-1) = add_pos;
+        }else{//添加元素
             _cmd_cart_pos_list.push_back(add_pos);
         }
     }else{
@@ -533,7 +607,7 @@ std::string robot_command_thread::getVariable(std::string para_list){
         }else if(para_match[1] == "CART"){
                 int idx = atol(para_match[2].str().c_str());
                 if(idx <= _cmd_cart_pos_list.size() && idx > 0){
-                    DescPose pos = _cmd_cart_pos_list.at(idx-1);
+                    DescPose pos = _cmd_cart_pos_list.at(idx-1).pose;
                     std::string res = std::to_string(pos.tran.x) + "," +\
                                           std::to_string(pos.tran.y) + "," +\
                                           std::to_string(pos.tran.z) + "," +\
@@ -1433,9 +1507,9 @@ std::string robot_command_thread::MoveJ(std::string para){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(out_container_range)]);
             return "-1";
         }
-        cartpos = _cmd_cart_pos_list.at(index-1);
+        cartpos = _cmd_cart_pos_list.at(index-1).pose;
         // Return the SDK error code (robot_error.h) rather than -1 so the caller can tell why it failed.
-        if(int kin_err = _ptr_robot->GetInverseKin(0,&cartpos,-1,&tmp_jnt_pos); kin_err != 0){
+        if(int kin_err = _solveCartPointIK(index,cartpos,tmp_jnt_pos); kin_err != 0){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(inv_kin_error)],kin_err);
             return std::to_string(kin_err);
         }
@@ -1532,9 +1606,9 @@ std::string robot_command_thread::MoveL(std::string para){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(out_container_range)]);
             return "-1";
         }
-        cartpos = _cmd_cart_pos_list.at(index-1);
+        cartpos = _cmd_cart_pos_list.at(index-1).pose;
         // Return the SDK error code (robot_error.h) rather than -1 so the caller can tell why it failed.
-        if(int kin_err = _ptr_robot->GetInverseKin(0,&cartpos,-1,&tmp_jnt_pos); kin_err != 0){
+        if(int kin_err = _solveCartPointIK(index,cartpos,tmp_jnt_pos); kin_err != 0){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(inv_kin_error)],kin_err);
             return std::to_string(kin_err);
         }
@@ -1638,10 +1712,10 @@ std::string robot_command_thread::MoveC(std::string para){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(out_container_range)]);
             return "-1";
         }
-        cartpos = _cmd_cart_pos_list.at(index-1);
-        cartpos2 = _cmd_cart_pos_list.at(index2-1);
-        if(_ptr_robot->GetInverseKin(0,&cartpos,-1,&tmp_jnt_pos) != 0 ||
-            _ptr_robot->GetInverseKin(0,&cartpos2,-1,&tmp_jnt_pos2) != 0){
+        cartpos = _cmd_cart_pos_list.at(index-1).pose;
+        cartpos2 = _cmd_cart_pos_list.at(index2-1).pose;
+        if(_solveCartPointIK(index,cartpos,tmp_jnt_pos) != 0 ||
+            _solveCartPointIK(index2,cartpos2,tmp_jnt_pos2) != 0){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(inv_kin_error)]);
             return "-1";
         }
@@ -1853,10 +1927,10 @@ std::string robot_command_thread::NewSplinePoint(std::string para){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(out_container_range)]);
             return "-1";
         }
-        DescPose cartpos = _cmd_cart_pos_list.at(index-1);
+        DescPose cartpos = _cmd_cart_pos_list.at(index-1).pose;
         JointPos jntpos;
 
-        if(_ptr_robot->GetInverseKin(0,&cartpos,-1,&jntpos) != 0){
+        if(_solveCartPointIK(index,cartpos,jntpos) != 0){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(inv_kin_error)]);
             return "-1";
         }
@@ -2339,6 +2413,45 @@ std::string robot_command_thread::GetInverseKin(std::string para){
     int config = std::stoi(list.front());list.pop_front();
     JointPos jntpose;
     int res = _ptr_robot->GetInverseKin(type,&cartpose,config,&jntpose);
+    return std::string(std::to_string(res) + "," + std::to_string(jntpose.jPos[0]) + "," +\
+            std::to_string(jntpose.jPos[1]) + "," + std::to_string(jntpose.jPos[2]) + "," +\
+            std::to_string(jntpose.jPos[3]) + "," + std::to_string(jntpose.jPos[4]) + "," +\
+            std::to_string(jntpose.jPos[5]));
+}
+
+/**
+ * @brief Inverse kinematics against a caller-supplied reference joint position, instead of the
+ *        robot's current one (GetInverseKin with config -1). Used to check a multi-pose motion
+ *        pose by pose: the reference for pose k is the solution found for pose k-1.
+ * @param para "type,x,y,z,rx,ry,rz,j1,j2,j3,j4,j5,j6" (pose in mm/deg, reference joints in deg)
+ * @return "code,j1,...,j6" like GetInverseKin
+ */
+std::string robot_command_thread::GetInverseKinRef(std::string para){
+    std::list<std::string> list;
+    _splitString2List(para,list);
+    if(list.size() != 13){
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),"GetInverseKinRef expects 13 parameters, got %zu",list.size());
+        return "-1";
+    }
+    // Every field is parsed strictly (whole field numeric), so a malformed request is
+    // refused with "-1" instead of being solved for a partly parsed pose or reference.
+    std::vector<std::string> fields(list.begin(),list.end());
+    int type = 0;
+    double values[12] = {0};
+    bool ok = parseIntStrict(fields[0],type);
+    for(int i=0;i<12 && ok;i++){
+        ok = parseDoubleStrict(fields[i+1],values[i]);
+    }
+    if(!ok){
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER_NAME),"GetInverseKinRef: malformed parameter in '%s'",para.c_str());
+        return "-1";
+    }
+    DescPose cartpose;
+    cartpose.tran.x = values[0]; cartpose.tran.y = values[1]; cartpose.tran.z = values[2];
+    cartpose.rpy.rx = values[3]; cartpose.rpy.ry = values[4]; cartpose.rpy.rz = values[5];
+    JointPos refpose(values[6],values[7],values[8],values[9],values[10],values[11]);
+    JointPos jntpose(0,0,0,0,0,0);  // the SDK leaves it untouched on error; reply with zeros, not garbage
+    int res = _ptr_robot->GetInverseKinRef(type,&cartpose,&refpose,&jntpose);
     return std::string(std::to_string(res) + "," + std::to_string(jntpose.jPos[0]) + "," +\
             std::to_string(jntpose.jPos[1]) + "," + std::to_string(jntpose.jPos[2]) + "," +\
             std::to_string(jntpose.jPos[3]) + "," + std::to_string(jntpose.jPos[4]) + "," +\

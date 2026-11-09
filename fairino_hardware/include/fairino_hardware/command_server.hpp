@@ -222,11 +222,14 @@ private:
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr _stop_motion_server;
     int _robot_install;//机械臂安装方式
     std::vector<JointPos> _cmd_jnt_pos_list;//存储关节数据点
-    std::vector<DescPose> _cmd_cart_pos_list;//存储笛卡尔数据点
-    // Optional IK reference per CART point (same index as _cmd_cart_pos_list): the joint
-    // solution MoveJ/MoveL solve nearest to instead of the robot's current joints. Set by a
-    // 13-field CARTPoint, cleared by a 7-field one.
-    std::vector<std::optional<JointPos>> _cmd_cart_ref_jnt_list;
+    // A CART point with an optional IK reference: the joint solution MoveJ/MoveL solve
+    // nearest to instead of the robot's current joints. Set by a 13-field CARTPoint,
+    // absent after a 7-field one. Kept in one element so the two can never go out of step.
+    struct CartPoint{
+        DescPose pose;
+        std::optional<JointPos> ref_jnt;
+    };
+    std::vector<CartPoint> _cmd_cart_pos_list;//存储笛卡尔数据点
     std::string _controller_ip;
     const std::map<std::string,std::string(robot_command_thread::*)(std::string)> _fr_function_list{
     {"JNTPoint",&robot_command_thread::defJntPosition},

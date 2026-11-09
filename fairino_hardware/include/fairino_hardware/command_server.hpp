@@ -198,7 +198,7 @@ private:
     void _fillDescPose(std::list<std::string>& data,DescPose& pose);
     void _fillDescTran(std::list<std::string>& data,DescTran& trans);
     void _fillJointPose(std::list<std::string>& data,JointPos& pos);
-    int _solveCartPointIK(int index,DescPose& cartpos,JointPos& jntpos);
+    int _solveCartPointIK(int index,const DescPose& cartpos,JointPos& jntpos);
     void _getRobotRTState();
     //Stop service callback: sends StopMotion to the controller on its own XML-RPC connection
     void _stopMotion_callback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,

@@ -145,7 +145,7 @@ hardware_interface::CallbackReturn FairinoHardwareInterface::on_activate(const r
         for(int j=0;j<6;j++){
             _jnt_position_command[j] = jntpos.jPos[j]/180.0*M_PI;
         }
-        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"),FR_MSG("初始指令位置: %f,%f,%f,%f,%f,%f", "Initial command position: %f,%f,%f,%f,%f,%f"),_jnt_position_command[0],\
+        RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"),FR_MSG("初始指令位置: %.2f,%.2f,%.2f,%.2f,%.2f,%.2f", "Initial command position: %.2f,%.2f,%.2f,%.2f,%.2f,%.2f"),_jnt_position_command[0],\
         _jnt_position_command[1],_jnt_position_command[2],_jnt_position_command[3],_jnt_position_command[4],_jnt_position_command[5]);    
         RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), FR_MSG("机械臂硬件启动成功!", "Robot hardware started successfully!"));
         return hardware_interface::CallbackReturn::SUCCESS;

@@ -1513,7 +1513,7 @@ std::string robot_command_thread::MoveJ(std::string para){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(inv_kin_error)],kin_err);
             return std::to_string(kin_err);
         }
-        RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),FR_MSG("返回逆向运动学结果:%f,%f,%f,%f,%f,%f", "Inverse kinematics result: %f,%f,%f,%f,%f,%f"),tmp_jnt_pos.jPos[0],\
+        RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),FR_MSG("返回逆向运动学结果:%.2f,%.2f,%.2f,%.2f,%.2f,%.2f", "Inverse kinematics result: %.2f,%.2f,%.2f,%.2f,%.2f,%.2f"),tmp_jnt_pos.jPos[0],\
             tmp_jnt_pos.jPos[1],tmp_jnt_pos.jPos[2],tmp_jnt_pos.jPos[3],tmp_jnt_pos.jPos[4],tmp_jnt_pos.jPos[5]);
     }else{
         RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(invalid_container_index)]);

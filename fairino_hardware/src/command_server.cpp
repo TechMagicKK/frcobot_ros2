@@ -1499,7 +1499,7 @@ std::string robot_command_thread::MoveJ(std::string para){
             RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),"%s (err=%d)",msgout[msg_id(fwd_kin_error)],kin_err);
             return std::to_string(kin_err);
         }
-        RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),FR_MSG("返回正向运动学结果:%f,%f,%f,%f,%f,%f", "Forward kinematics result: %f,%f,%f,%f,%f,%f"),cartpos.tran.x,\
+        RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),FR_MSG("返回正向运动学结果:%.2f,%.2f,%.2f,%.2f,%.2f,%.2f", "Forward kinematics result: %.2f,%.2f,%.2f,%.2f,%.2f,%.2f"),cartpos.tran.x,\
             cartpos.tran.y,cartpos.tran.z,cartpos.rpy.rx,cartpos.rpy.ry,cartpos.rpy.rz);
     }else if(std::regex_match(head_str,num_match,std::regex("(CART)([0-9]*)"))){
         int index = atol(num_match[2].str().c_str());

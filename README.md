@@ -1,6 +1,8 @@
 # frcobot_ros2
 
-This is the ROS 2 API project for the Fairino robot (software version must be greater than V3.7.1). It provides a series of functions based on the Fair SDK API that have been simplified, allowing users to call them through service messages.
+This is the ROS 2 API project for the Fairino robot. It provides a series of functions based on the Fair SDK API that have been simplified, allowing users to call them through service messages.
+
+This fork is built against robot controller software V3.8.4 (`fairino_hardware` V3.0.0, bundled SDK `libfairino` 2.2.4).
 
 ## Why this fork
 
@@ -11,7 +13,8 @@ The upstream implementation hardcoded several motion parameters, making runtime 
 This fork refactors `MoveGripper` in [fairino_hardware/src/command_server.cpp](https://github.com/FAIR-INNOVATION/frcobot_ros2/blob/7c683cf63f2c94587a5197c67fd0a80dc886b7ad/fairino_hardware/src/command_server.cpp#L946-L965) to:
 
 - Accept `max_time` and `block` as dynamic parameters passed by the client.
-- When `block = 0` (non-blocking), poll `GetGripperMotionDone` up to `max_time` ms with 50 ms intervals so the caller still gets reliable completion detection without blocking the robot controller thread.
+- When `block = 0` (blocking; `1` is non-blocking), wait for the gripper in the driver: the SDK call returns before the gripper has moved, so the driver polls `GetGripperMotionDone` every 50 ms for up to `max_time` ms.
+- Wait in two phases. Right after the command the motion-done flag still describes the previous motion, so the driver first waits for the flag to clear and then for it to set again. A command for the position the gripper already holds never clears the flag; that first wait ends after 300 ms.
 - Surface gripper faults via `RCLCPP_WARN` (ROS 2 logger) if `fault != 0` is detected during the poll.
 
 This is required for applications that need fine-grained control over gripper behavior — for example, coordinating gripper motion with arm trajectories where a fixed 30-second blocking wait is unacceptable.
@@ -34,6 +37,29 @@ only runs after a blocking move has finished. The stop service runs on its own c
 ```bash
 ros2 service call /fairino_stop_motion_service std_srvs/srv/Trigger
 ```
+
+**Inverse-kinematics reference** — `MoveJ`/`MoveL` on a `CART` point solve the inverse kinematics nearest the
+robot's current joints. For a motion queued behind another one that is the wrong reference, and the pre-check can
+reject a reachable pose or pick another arm posture. Two additions let the caller supply the reference:
+
+- `CARTPoint` takes 13 fields besides the usual 7: `CARTPoint(idx,x,y,z,rx,ry,rz,j1,j2,j3,j4,j5,j6)`. `MoveJ`/`MoveL`
+  on that point then solve nearest `j1`–`j6` (deg). A 7-field point behaves as before.
+- `GetInverseKinRef(type,x,y,z,rx,ry,rz,j1,j2,j3,j4,j5,j6)` returns `code,j1,...,j6` like `GetInverseKin`, solved
+  nearest the given joints.
+
+Both parse every field strictly: an empty, partly numeric or non-finite field is refused with `-1` and nothing is
+stored.
+
+**Error codes from the kinematics pre-check** — when the forward or inverse kinematics pre-check of `MoveJ`/`MoveL`
+fails, the reply is the SDK error code (see `ErrorCode_lnstruction.pdf`), not a bare `-1`.
+
+**Controller IP** — both `ros2_cmd_server` and the `ros2_control` hardware interface read the controller address
+from the `ROBOT_IP` environment variable, falling back to `192.168.57.2`
+([controller_ip.h](fairino_hardware/include/fairino_hardware/controller_ip.h)). The hardware interface prefers its
+`controller_ip` hardware parameter when the URDF sets one.
+
+**Log language** — driver log messages are English. Switch to Chinese by enabling `CHN_VERSION` instead of
+`ENG_VERSION` in [version_control.h](fairino_hardware/include/fairino_hardware/version_control.h) and rebuilding.
 
 ## Gripper and arm motion in parallel
 
@@ -68,12 +94,22 @@ git clone git@github.com:TechMagicKK/frcobot_ros2.git
 cd frcobot_ros2
 ```
 
-  `main` is derived from the `tags/V3.0.0_RobotV3.8.4` tag of the [FAIR-INNOVATION repository](https://github.com/FAIR-INNOVATION/frcobot_ros2.git) as shown below:
+Build it in a ROS 2 workspace and start the command server:
 
-  ```bash
-  git clone https://github.com/FAIR-INNOVATION/frcobot_ros2.git
-  cd frcobot_ros2
-  git checkout tags/V3.0.0_RobotV3.8.4
-  ```
+```bash
+colcon build --packages-up-to fairino_hardware
+source install/setup.bash
+ROBOT_IP=192.168.57.2 ros2 run fairino_hardware ros2_cmd_server
+```
 
-  > **Note:** You do not need to clone `FAIR-INNOVATION/frcobot_ros2.git` — this is shown here for reference only.
+`main` is derived from the `tags/V3.0.0_RobotV3.8.4` tag of the [FAIR-INNOVATION repository](https://github.com/FAIR-INNOVATION/frcobot_ros2.git) as shown below:
+
+```bash
+git clone https://github.com/FAIR-INNOVATION/frcobot_ros2.git
+cd frcobot_ros2
+git checkout tags/V3.0.0_RobotV3.8.4
+```
+
+> **Note:** You do not need to clone `FAIR-INNOVATION/frcobot_ros2.git` — this is shown here for reference only.
+
+The upstream command reference is `API_Instruction.pdf` in the repository root.

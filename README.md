@@ -42,13 +42,15 @@ ros2 service call /fairino_stop_motion_service std_srvs/srv/Trigger
 robot's current joints. For a motion queued behind another one that is the wrong reference, and the pre-check can
 reject a reachable pose or pick another arm posture. Two additions let the caller supply the reference:
 
-- `CARTPoint` takes 13 fields besides the usual 7: `CARTPoint(idx,x,y,z,rx,ry,rz,j1,j2,j3,j4,j5,j6)`. `MoveJ`/`MoveL`
-  on that point then solve nearest `j1`–`j6` (deg). A 7-field point behaves as before.
+- `CARTPoint` takes either 7 fields, as before, or 13 in total: the same 7 followed by six reference joints,
+  `CARTPoint(idx,x,y,z,rx,ry,rz,j1,j2,j3,j4,j5,j6)`. `MoveJ`/`MoveL` on a 13-field point then solve nearest
+  `j1`–`j6` (deg). A 7-field point behaves as before.
 - `GetInverseKinRef(type,x,y,z,rx,ry,rz,j1,j2,j3,j4,j5,j6)` returns `code,j1,...,j6` like `GetInverseKin`, solved
   nearest the given joints.
 
 Both parse every field strictly: an empty, partly numeric or non-finite field is refused with `-1` and nothing is
-stored.
+stored. One exception: a single trailing comma is ignored, not read as an empty field, so
+`CARTPoint(1,10,20,30,0,0,0,)` is accepted as a 7-field point and stores (or overwrites) point 1.
 
 **Error codes from the kinematics pre-check** — when the forward or inverse kinematics pre-check of `MoveJ`/`MoveL`
 fails, the reply is the SDK error code (see `ErrorCode_lnstruction.pdf`), not a bare `-1`.

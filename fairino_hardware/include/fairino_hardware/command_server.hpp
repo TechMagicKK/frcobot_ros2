@@ -8,6 +8,7 @@
 #include "fairino_msgs/srv/remote_cmd_interface.hpp"
 #include "fairino_msgs/msg/robot_nonrt_state.hpp"
 #include "fairino_msgs/msg/robot_motion_status.hpp"
+#include "fairino_msgs/msg/gripper_state.hpp"
 #include "std_srvs/srv/trigger.hpp"
 #include "mutex"
 #include "sys/socket.h"
@@ -28,11 +29,14 @@ using remote_cmd_server_srv_msg = fairino_msgs::srv::RemoteCmdInterface;
 using remote_script_srv_msg = fairino_msgs::srv::RemoteScriptContent;
 using robot_feedback_msg = fairino_msgs::msg::RobotNonrtState;
 using robot_motion_status_msg = fairino_msgs::msg::RobotMotionStatus;
+using gripper_state_msg = fairino_msgs::msg::GripperState;
 #define REMOTE_CMD_SERVER_NAME  "fairino_remote_command_service"
 #define REMOTE_SCRIPT_SERVER_NAME  "fairino_script_service"
 // Stop service that runs alongside a blocking command: the command service handles one call at a
 // time, so StopMotion() sent through it waits until a blocking MoveJ/MoveL has finished.
 #define STOP_MOTION_SERVER_NAME  "fairino_stop_motion_service"
+// Gripper feedback in the controller's raw units (fairino_msgs/GripperState), see _publishGripperState.
+#define GRIPPER_STATE_TOPIC_NAME  "gripper_state_raw"
 
 
 class robot_command_thread:public rclcpp::Node{
@@ -220,6 +224,12 @@ private:
     //Stop service on its own callback group, so it runs while the command service is blocked
     rclcpp::CallbackGroup::SharedPtr _stop_motion_callback_group;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr _stop_motion_server;
+    // Gripper feedback: its own callback group, so it keeps publishing while the command service
+    // is inside a blocking MoveJ/MoveL (the default group runs one callback at a time).
+    rclcpp::CallbackGroup::SharedPtr _gripper_state_callback_group;
+    rclcpp::TimerBase::SharedPtr _gripper_state_timer;
+    rclcpp::Publisher<gripper_state_msg>::SharedPtr _gripper_state_publisher;
+    void _publishGripperState();
     int _robot_install;//机械臂安装方式
     std::vector<JointPos> _cmd_jnt_pos_list;//存储关节数据点
     // A CART point with an optional IK reference: the joint solution MoveJ/MoveL solve

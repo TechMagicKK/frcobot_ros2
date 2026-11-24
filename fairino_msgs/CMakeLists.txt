@@ -12,12 +12,15 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 
 find_package(rosidl_default_generators REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
    "srv/RemoteCmdInterface.srv"
    "srv/RemoteScriptContent.srv"
    "msg/RobotNonrtState.msg"
    "msg/RobotMotionStatus.msg"
+   "msg/GripperState.msg"
+   DEPENDENCIES builtin_interfaces
 )
 
 

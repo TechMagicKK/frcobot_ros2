@@ -1,6 +1,6 @@
 # Gripper feedback as the controller reports it, sampled from the SDK realtime state
 # package (FRRobot::GetRobotRealTimeState) by the fairino_hardware command server and
-# published on "gripper_state_raw" at ~20 Hz, also while a blocking move is running.
+# published on "gripper_state_raw" at ~10 Hz, also while a blocking move is running.
 # Raw controller units: nothing here is converted. A consumer that needs the opening
 # in metres maps position_pct with its own calibration (techmagic_fairino_commander
 # does, and republishes it as techmagic_arm_commander_interfaces/GripperState).

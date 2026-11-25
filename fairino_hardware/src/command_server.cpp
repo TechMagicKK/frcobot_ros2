@@ -16,10 +16,10 @@ std::atomic<int> suberrcode;
 // taken to be at the target already [ms], and the period of the motion-done poll [ms].
 static constexpr int GRIPPER_MOTION_START_TIMEOUT_MS = 300;
 static constexpr int GRIPPER_MOTION_POLL_MS = 50;
-// Period of the gripper feedback topic (GRIPPER_STATE_TOPIC_NAME): 20 Hz. The SDK refreshes its
-// realtime state package at ~100 Hz; consumers sample the gripper at 5 Hz, so 20 Hz leaves each of
-// them a reading at most 50 ms old without loading the executor.
-static constexpr int GRIPPER_STATE_PERIOD_MS = 50;
+// Period of the gripper feedback topic (GRIPPER_STATE_TOPIC_NAME): 10 Hz. The SDK refreshes its
+// realtime state package at ~100 Hz; the gripper opening changes only during a grasp or a release,
+// so 10 Hz leaves each consumer a reading at most 100 ms old without loading the executor.
+static constexpr int GRIPPER_STATE_PERIOD_MS = 100;
 
 #ifdef CHN_VERSION
 char* msgout[] = {

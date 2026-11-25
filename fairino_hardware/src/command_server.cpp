@@ -16,6 +16,10 @@ std::atomic<int> suberrcode;
 // taken to be at the target already [ms], and the period of the motion-done poll [ms].
 static constexpr int GRIPPER_MOTION_START_TIMEOUT_MS = 300;
 static constexpr int GRIPPER_MOTION_POLL_MS = 50;
+// Period of the gripper feedback topic (GRIPPER_STATE_TOPIC_NAME): 20 Hz. The SDK refreshes its
+// realtime state package at ~100 Hz; consumers sample the gripper at 5 Hz, so 20 Hz leaves each of
+// them a reading at most 50 ms old without loading the executor.
+static constexpr int GRIPPER_STATE_PERIOD_MS = 50;
 
 #ifdef CHN_VERSION
 char* msgout[] = {
@@ -257,6 +261,14 @@ robot_command_thread::robot_command_thread(const std::string node_name):rclcpp::
     }
 
     _locktimer = this->create_wall_timer(10ms,std::bind(&robot_command_thread::_getRobotRTState,this));
+    // Gripper feedback, on its own callback group: _locktimer shares the default group with the
+    // command service, so it does not run while a blocking move is being executed.
+    _gripper_state_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    _gripper_state_publisher = this->create_publisher<gripper_state_msg>(GRIPPER_STATE_TOPIC_NAME, rclcpp::SensorDataQoS());
+    _gripper_state_timer = this->create_wall_timer(
+        std::chrono::milliseconds(GRIPPER_STATE_PERIOD_MS),
+        std::bind(&robot_command_thread::_publishGripperState,this),
+        _gripper_state_callback_group);
     RCLCPP_INFO(rclcpp::get_logger(LOGGER_NAME),msgout[msg_id(connect_success)]);
     /*********************************************************************************************/
 }
@@ -451,6 +463,31 @@ void robot_command_thread::_getRobotRTState(){
     _ptr_robot->GetRobotRealTimeState(&tmp);
     mainerrcode = tmp.main_code;
     suberrcode = tmp.sub_code;
+}
+
+/**
+ * @brief Publish the gripper's feedback (GRIPPER_STATE_TOPIC_NAME) in the controller's raw units.
+ *
+ * Read from the SDK realtime state package, which the SDK keeps current on its own thread: no
+ * command is sent to the controller, so this neither waits behind a blocking move nor delays one.
+ * Nothing is published while the package cannot be read (connection lost): a consumer sees the
+ * topic go quiet instead of a stale position.
+ */
+void robot_command_thread::_publishGripperState(){
+    // Its own copy: _getRobotRTState runs on another callback group and may run at the same time.
+    ROBOT_STATE_PKG state;
+    if(_ptr_robot->GetRobotRealTimeState(&state) != 0){
+        return;
+    }
+    gripper_state_msg msg;
+    msg.stamp = this->now();
+    msg.position_pct = state.gripper_position;
+    msg.speed_pct = state.gripper_speed;
+    msg.current_pct = state.gripper_current;
+    msg.fault = state.gripper_fault;
+    msg.active = state.gripper_active;
+    msg.motion_done = state.gripper_motiondone;
+    _gripper_state_publisher->publish(msg);
 }
 
 
